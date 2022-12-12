@@ -1,9 +1,9 @@
 import numpy as np
 import random
 import math
-
+import torch.nn as nn
 from collections import deque
-
+"""
 class UniformReplayBuffer():
 
     def __init__(self, capacity: int,   # the capacity of the buffer
@@ -207,6 +207,36 @@ class FrameStack():
         state = frames.reshape(-1, *frames.shape[2:]) # shape (N*C,W,H)
 
         return state 
+"""
+def make_MLP(in_dim: int, 
+             out_dim: int, 
+             hidden_dims: tuple, 
+             hidden_act = nn.ReLU, 
+             out_act = None) -> nn.Module:
+    layers = []
+    if len(hidden_dims) == 0:
+        layers.append(nn.Linear(in_dim,out_dim))
+        if out_act != None:
+            layers.append(out_act())
+        return nn.Sequential(*layers)
+    else:
+        d_in = in_dim
+        for d_out in hidden_dims:
+            layers.append(nn.Linear(d_in,d_out))
+            layers.append(hidden_act())
+            d_in = d_out
+        layers.append(nn.Linear(d_out,out_dim))
+        if out_act != None:     
+            layers.append(out_act())
+        return nn.Sequential(*layers)
+
+"""
+def make_CNN(in_dim: tuple, out):
+    pass
+
+def compute_conv_dimensions(dim_in: tuple, ksize: int, stride=1, padding=0)-> tuple:
+    pass
+"""
 
 # TODO 
 # pre processing observations (as they are generated)
