@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-from utils import make_MLP
+from utils import make_MLP, infoNCE, soft_update_params
 
 # neural network for query and key encoder
 class Encoder(nn.Module):
@@ -51,12 +51,19 @@ class FeatureEncoder(nn.Module):
                        a_out_act = nn.Tanh,      # action embedding output activation
                        fdm_hidden_dims = (50,50,), # fwd dynamics MLP hidden layers
                        fdm_out_act = None,         # fwd dynamics MLP output activation
+                       tau = 0.005, # target update speed
+                       C = 0.2,      # intrinsic weight
+                       gamma = 2e-5, # intrinsic decay
                        ):
         super().__init__()
 
         self.s_shape = s_shape
         self.a_shape = a_shape
         self.s_dim = s_dim
+
+        self.tau = tau
+        self.C = C
+        self.gamma = gamma
 
         self.query_encoder = Encoder(s_shape,s_dim)
 
@@ -77,17 +84,68 @@ class FeatureEncoder(nn.Module):
 
             # temperature ...
         }
+        self.max_intrinsic = 0 # the maximum intrinsic reward (for normalization)
 
     def encode(self, s: torch.Tensor)-> torch.Tensor:
         # just encode a state to be passed to SAC
         with torch.no_grad():
             return self.query_encoder(s)
     
-    def compute_loss(self, s, a, r, d, sp):
+    def predict(self,s,a)-> torch.Tensor:
+        # generate a prediciton for the new state
+        q = self.query_encoder(s) # encode the state
+        ae = self.action_encoder(a) # encode the action
+        qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
+
+        return qp
+
+    def compute_contrastive_loss(self, s, a, sp, sim_metric="dot"):
         # what is proposed in the paper is contrastive loss
         # between new states and predicted new state
 
         # what is actually implemented in https://github.com/thanhkaist/CCFDM1
         # is a combination of this loss and the CURL loss, which is between
-        # current states and does not involve the dynamics model
-        raise NotImplementedError()
+        # current states and does not involve the dynamics model.
+        # this modification is not reported in the paper.
+
+        # fdm loss
+        qp = self.predict(s,a)
+
+
+        # encode the next states in the transition
+        kp = self.key_encoder(sp)
+
+        # TODO: what happens when done is true?
+
+        return infoNCE(qp,kp,self.sim_metrics[sim_metric])
+
+
+    def compute_intrinsic_reward(self, s, a, sp, step, max_reward, sim_metric="dot"):
+        with torch.no_grad(): # don't backprop through intrinsic reward
+            qp = self.predict(s,a)
+            kp = self.key_encoder(sp)
+
+            # the authors propose an intrinsic reward that is proportional to similarity
+            # in our understanding however similarity high implies low prediction error
+            # thus low intrinsic reward. As a matter of fact it is implemented 
+            # differently in https://github.com/thanhkaist/CCFDM1
+            # sim = self.sim_metrics[sim_metric](qp,kp)
+
+            # we try to use MSE instead
+            pred_error = (qp-kp).pow(2).sum(dim=1).sqrt()
+
+            max_error = max(pred_error)
+            if max_error > self.max_intrinsic:
+                self.max_intrinsic = max_error
+            
+            ri = self.C*torch.exp(-self.gamma*step)* pred_error * max_reward / self.max_intrinsic
+
+            # TODO: what happens when done is true?
+
+            return ri
+
+    def update_key_network(self):
+        soft_update_params(self.query_encoder, self.key_encoder, self.tau)
+
+    def sync_key_network(self):
+        self.key_encoder.load_state_dict(self.query_encoder.state_dict())

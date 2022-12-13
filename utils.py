@@ -4,7 +4,7 @@ import math
 import torch.nn as nn
 import torch 
 from collections import deque
-"""
+
 class UniformReplayBuffer():
 
     def __init__(self, capacity: int,   # the capacity of the buffer
@@ -208,7 +208,7 @@ class FrameStack():
         state = frames.reshape(-1, *frames.shape[2:]) # shape (N*C,W,H)
 
         return state 
-"""
+
 def make_MLP(in_dim: int, 
              out_dim: int, 
              hidden_dims: tuple, 
@@ -249,7 +249,11 @@ def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
 
     return nn.functional.cross_entropy(sims,labels)
 
-
+def soft_update_params(net, target_net, tau):
+    for param, target_param in zip(net.parameters(), target_net.parameters()):
+        target_param.data.copy_(
+            tau * param.data + (1 - tau) * target_param.data
+        )
 # TODO 
 # pre processing observations (as they are generated)
 # - gray scale (?)

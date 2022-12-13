@@ -14,4 +14,4 @@ a = torch.arange(3*4, dtype=torch.float32).reshape(3,4)
 b = torch.arange(3*4, dtype=torch.float32).reshape(3,4)
 
 
-print(infoNCE(a,b,bilinear))
+print(infoNCE(a,b,dot))
