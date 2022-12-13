@@ -196,13 +196,13 @@ class FrameStack():
         self.frame_stack = deque(maxlen=n_frames)
 
     def append_frame(self, obs: np.ndarray):
-        self.q_frames.append(obs)
+        self.frame_stack.append(obs)
 
     def reset(self, obs: np.ndarray):
         self.frame_stack = deque(self.n_frames * [obs], maxlen=self.n_frames)
 
     def get_state(self)-> np.ndarray:
-        frames = np.array(self.q_frames,dtype=np.float32)
+        frames = np.array(self.frame_stack,dtype=np.float32)
 
         # stack along channels
         state = frames.reshape(-1, *frames.shape[2:]) # shape (N*C,W,H)
