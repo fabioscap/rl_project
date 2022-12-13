@@ -50,7 +50,7 @@ class UniformReplayBuffer():
 
         return self.idx
 
-    def sample_idxes_weights(self, n) -> tuple(list, list):
+    def sample_idxes_weights(self, n):
         high = self.size()
         return random.choices(population=range(high), k=n), None     
 

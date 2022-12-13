@@ -37,8 +37,8 @@ class Encoder(nn.Module):
 
         self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act)
 
-    def forward(self, x):
-        v = torch.flatten(self.cnn(x))
+    def forward(self, x): # x has shape (b,c,w,h)
+        v = torch.flatten(self.cnn(x), start_dim = 1)
         return self.mlp(v)
 
 # the whole encoder
@@ -123,8 +123,18 @@ class FeatureEncoder(nn.Module):
 
         return fdm_contrastive_loss
 
+    def compute_mse_loss(self, s, a, sp):
+        # fdm loss
+        qp = self.predict(s,a)
 
-    def compute_intrinsic_reward(self, s, a, sp, step, max_reward, sim_metric="dot"):
+        # encode the next states in the transition
+        kp = self.key_encoder(sp)
+
+        mse_loss = nn.functional.mse_loss(qp,kp)
+
+        return mse_loss
+
+    def compute_intrinsic_reward(self, s, a, sp, step, max_reward):
         with torch.no_grad(): # don't backprop through intrinsic reward
             qp = self.predict(s,a)
             kp = self.key_encoder(sp)
