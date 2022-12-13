@@ -2,6 +2,7 @@ import numpy as np
 import random
 import math
 import torch.nn as nn
+import torch 
 from collections import deque
 """
 class UniformReplayBuffer():
@@ -230,18 +231,30 @@ def make_MLP(in_dim: int,
             layers.append(out_act())
         return nn.Sequential(*layers)
 
-"""
-def make_CNN(in_dim: tuple, out):
-    pass
+# implement the contrastive loss used in CURL, CCFDM
+def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
+    # the positive key is at the same index as the query
+    # the other indexes are the negative keys
+    
+    # q: (b,n)
+    # k: (b,n)
 
-def compute_conv_dimensions(dim_in: tuple, ksize: int, stride=1, padding=0)-> tuple:
-    pass
-"""
+    # compute the similarities
+    sims = similarity(queries,keys) # (b,b)
+    # the diagonal elements can be interpreted as positive keys
+    # the off diagonal as negative keys
+
+    # compute the fake labels
+    labels = torch.arange(sims.shape[0], dtype=torch.long)
+
+    return nn.functional.cross_entropy(sims,labels)
+
 
 # TODO 
 # pre processing observations (as they are generated)
 # - gray scale (?)
 # - [0,255] -> [0,1]
+# - np -> torch (?)
 
 # center crop observations (as they are sampled)
 # - why do they center crop? (is it related to contrastive learning?)
