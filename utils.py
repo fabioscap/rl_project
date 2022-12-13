@@ -254,6 +254,9 @@ def soft_update_params(net, target_net, tau):
         target_param.data.copy_(
             tau * param.data + (1 - tau) * target_param.data
         )
+def copy_params(copy_from: nn.Module, copy_to: nn.Module):
+    copy_to.load_state_dict(copy_from.state_dict())
+
 # TODO 
 # pre processing observations (as they are generated)
 # - gray scale (?)

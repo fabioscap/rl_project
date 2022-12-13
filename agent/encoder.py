@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-from utils import make_MLP, infoNCE, soft_update_params
+from utils import make_MLP, infoNCE, soft_update_params, copy_params
 
 # neural network for query and key encoder
 class Encoder(nn.Module):
@@ -70,6 +70,8 @@ class FeatureEncoder(nn.Module):
         self.key_encoder = Encoder(s_shape,s_dim)
         for param in self.key_encoder.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
+        # copy params at start ?
+        copy_params(self.query_encoder, self.key_encoder)
 
         self.action_encoder = make_MLP(a_shape, a_dim, a_hidden_dims, out_act=a_out_act)
         self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act) 
@@ -111,13 +113,15 @@ class FeatureEncoder(nn.Module):
         # fdm loss
         qp = self.predict(s,a)
 
-
         # encode the next states in the transition
         kp = self.key_encoder(sp)
 
+        fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric])
+
+        # TODO: curl loss ?
         # TODO: what happens when done is true?
 
-        return infoNCE(qp,kp,self.sim_metrics[sim_metric])
+        return fdm_contrastive_loss
 
 
     def compute_intrinsic_reward(self, s, a, sp, step, max_reward, sim_metric="dot"):
@@ -125,13 +129,7 @@ class FeatureEncoder(nn.Module):
             qp = self.predict(s,a)
             kp = self.key_encoder(sp)
 
-            # the authors propose an intrinsic reward that is proportional to similarity
-            # in our understanding however similarity high implies low prediction error
-            # thus low intrinsic reward. As a matter of fact it is implemented 
-            # differently in https://github.com/thanhkaist/CCFDM1
-            # sim = self.sim_metrics[sim_metric](qp,kp)
-
-            # we try to use MSE instead
+            # we try to use MSE as a dissimilarity metric
             pred_error = (qp-kp).pow(2).sum(dim=1).sqrt()
 
             max_error = max(pred_error)
@@ -146,6 +144,4 @@ class FeatureEncoder(nn.Module):
 
     def update_key_network(self):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
-
-    def sync_key_network(self):
-        self.key_encoder.load_state_dict(self.query_encoder.state_dict())
+        
