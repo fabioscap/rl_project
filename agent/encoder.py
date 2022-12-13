@@ -86,7 +86,7 @@ class FeatureEncoder(nn.Module):
 
             # temperature ...
         }
-        self.max_intrinsic = 0 # the maximum intrinsic reward (for normalization)
+        self.max_intrinsic = 1e-8 # the maximum intrinsic reward (for normalization)
 
     def encode(self, s: torch.Tensor)-> torch.Tensor:
         # just encode a state to be passed to SAC
