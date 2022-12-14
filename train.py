@@ -9,6 +9,7 @@ import numpy as np
 # TODO add command line arguments
 n_train_steps = 1000000
 eval_frequency = 10
+update_frequency = 10
 log_interval = 10
 save_model = True
 save_buffer = True
@@ -52,7 +53,10 @@ for step in range(n_train_steps):
     time_step = env.step(action)
 
     next_observation = time_step.observation['pixels']
+
     reward = time_step.reward
+    episode_reward += reward
+    
     done = time_step.last()
 
     next_state = frame_stack.append_frame(next_observation)
@@ -63,8 +67,7 @@ for step in range(n_train_steps):
     state = next_state
     
     # if update...
+    if step > 0 and step % update_frequency:
+        agent.update(replay_buffer, step)
 
-    # if log...
-    
-
-    
+    # if log...    
