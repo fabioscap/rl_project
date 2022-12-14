@@ -197,6 +197,7 @@ class FrameStack():
 
     def append_frame(self, obs: np.ndarray):
         self.frame_stack.append(obs)
+        return self.get_state()
 
     def reset(self, obs: np.ndarray):
         self.frame_stack = deque(self.n_frames * [obs], maxlen=self.n_frames)
