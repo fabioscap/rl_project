@@ -119,7 +119,6 @@ class FeatureEncoder(nn.Module):
         fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric])
 
         # TODO: curl loss ?
-        # TODO: what happens when done is true?
 
         return fdm_contrastive_loss
 
@@ -147,8 +146,6 @@ class FeatureEncoder(nn.Module):
                 self.max_intrinsic = max_error
             
             ri = self.C*torch.exp(-self.gamma*step)* pred_error * max_reward / self.max_intrinsic
-
-            # TODO: what happens when done is true?
 
             return ri
 

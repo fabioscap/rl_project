@@ -70,12 +70,21 @@ class SAC(nn.Module):
 
     def policy_forward(self, state):
         state = self.check_tensor(state)
-        #print("STATE",state.shape)
+        
         out = self.policy_network(state)
-        #print("OUT",out.shape)
-        mu = out[:self.a_dim]
-        log_std = out[self.a_dim:]
 
+        if len(out) == 2*self.a_dim:
+
+            mu = out[:self.a_dim]
+            
+            log_std = out[self.a_dim:]
+            
+        else:
+            mu = out[:, self.a_dim - 1]
+            log_std = out[:,-1]
+
+        
+        
         log_std = torch.tanh(log_std)
         log_std_min, log_std_max = self.log_std_bounds
 
@@ -90,7 +99,6 @@ class SAC(nn.Module):
         state = self.check_tensor(state)
         action = self.check_tensor(action)
 
-        #print(state.shape, action.shape)
         obs_action = torch.cat([state, action], dim = -1)
         Q1 = self.Q_network1(obs_action)
         Q2 = self.Q_network2(obs_action)
@@ -99,7 +107,7 @@ class SAC(nn.Module):
     def Qtarg_forward(self, state, action):
         state = self.check_tensor(state)
         action = self.check_tensor(action)
-    
+       
         obs_action = torch.cat([state, action], dim = -1 )
 
         Q1 = self.Q_target1(obs_action)
@@ -118,17 +126,15 @@ class SAC(nn.Module):
         normal = Normal(0, 1)
         z = normal.sample()
         action = self.rep_trick(mu, std)
-        #print("ACTION",action.shape, "MU", mu.shape,"STD", std.shape)
+        
         log_prob = Normal(mu, std).log_prob(mu+ std*z) - torch.log(1 - action.pow(2) + self.epsilon)
         
-        return log_prob, action
+        return log_prob, action.unsqueeze(-1)
 
     def get_action(self,state):
         state = self.check_tensor(state)
         dist = self.actor(state)
-        print("DIST",dist.shape)
         action  = dist.cpu().detach().numpy()
-        print("ACTION1", action)
         return action
 
 
@@ -146,7 +152,7 @@ class SAC(nn.Module):
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        print("POLICY UPDATE")
+        print("POLICY UPDATED")
         return actor_loss
 
     def update_Qnetworks(self, reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob):
@@ -167,9 +173,9 @@ class SAC(nn.Module):
 
         return critic1_loss, critic2_loss
     def update_SAC(self, state, reward, action, new_state, done):
-        print("ACTION2", action)
+       
         log_prob, new_action = self.return_log(new_state)
-        
+
         Q_net1, Q_net2 = self.Qnet_forward(state, action)
         
         Q_targ1, Q_targ2 = self.Qtarg_forward(new_state, new_action)
@@ -177,6 +183,7 @@ class SAC(nn.Module):
         loss1, loss2 = self.update_Qnetworks(reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob)
 
         dist = self.actor(state)
+        dist = dist.unsqueeze(-1)
         Q1, Q2 = self.Qnet_forward(state, dist)
         loss3 = self.update_policy(state, Q1, Q2)
 

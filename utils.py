@@ -44,8 +44,8 @@ class UniformReplayBuffer():
 
         np.copyto(self.states[self.idx], s)
         np.copyto(self.actions[self.idx], a)
-        np.copyto(self.rewards[self.idx], r)
-        np.copyto(self.dones[self.idx],   d)
+        np.copyto(self.rewards[self.idx,...], r)
+        np.copyto(self.dones[self.idx,...],   d)
         np.copyto(self.next_states[self.idx], sp)
 
         return self.idx
@@ -197,9 +197,11 @@ class FrameStack():
 
     def append_frame(self, obs: np.ndarray):
         self.frame_stack.append(obs)
+        return self.get_state()
 
     def reset(self, obs: np.ndarray):
         self.frame_stack = deque(self.n_frames * [obs], maxlen=self.n_frames)
+        return self.get_state()
 
     def get_state(self)-> np.ndarray:
         frames = np.array(self.frame_stack,dtype=np.float32)
