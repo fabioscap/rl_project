@@ -152,7 +152,6 @@ class SAC(nn.Module):
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
-        print("POLICY UPDATED")
         return actor_loss
 
     def update_Qnetworks(self, reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob):
@@ -169,11 +168,14 @@ class SAC(nn.Module):
         self.Q_network2_optimizer.zero_grad()
         critic2_loss.backward()
         self.Q_network2_optimizer.step()
-        print("Q UPDATED")
 
         return critic1_loss, critic2_loss
     def update_SAC(self, state, reward, action, new_state, done):
-       
+        state      = torch.FloatTensor(state)
+        new_state  = torch.FloatTensor(new_state)
+        action     = torch.FloatTensor(action)
+        reward     = torch.FloatTensor(reward).unsqueeze(1)
+        done       = torch.FloatTensor(np.float32(done)).unsqueeze(1)
         log_prob, new_action = self.return_log(new_state)
 
         Q_net1, Q_net2 = self.Qnet_forward(state, action)
@@ -188,8 +190,6 @@ class SAC(nn.Module):
         loss3 = self.update_policy(state, Q1, Q2)
 
         soft_update_params(self.Q_network1, self.Q_target1,0.01)
-        soft_update_params(self.Q_network2, self.Q_target2,0.01)
-
-        print("UDPATE DONE")        
+        soft_update_params(self.Q_network2, self.Q_target2,0.01)       
 
         return loss1.item() + loss2.item() + loss3.item() 
