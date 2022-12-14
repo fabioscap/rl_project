@@ -1,17 +1,55 @@
-from agent.encoder import FeatureEncoder
-from utils import infoNCE
-import torch
-# test 
-net = FeatureEncoder((4,64,64),2,4,12)
+import gym
+from agent._sac import SacAgent
+from utils import UniformReplayBuffer
+import numpy as np
+import matplotlib.pyplot as plt
+env = gym.make("Pendulum-v1")
+s_dim = env.observation_space.shape[0]
+a_dim = env.action_space.shape[0]
 
-dot = net.sim_metrics["dot"]
-bilinear = net.sim_metrics["bilinear"]
+agent = SacAgent(s_dim, a_dim, "cpu")
 
-a = torch.rand((3,4))
-b = torch.rand((3,4))
+replay_buffer = UniformReplayBuffer(10000, (s_dim,), (a_dim,))
 
-a = torch.arange(3*4, dtype=torch.float32).reshape(3,4)
-b = torch.arange(3*4, dtype=torch.float32).reshape(3,4)
+from statistics import mean
 
+max_frames  = 40000
+max_steps   = 200
+frame_idx   = 0
+episode = 0
+rewards     = []
+losses = []
+batch_size  = 128
+desired_rew = -100
+window = 50
 
-print(infoNCE(a,b,dot))
+while frame_idx < max_frames:
+    
+    state, _ = env.reset()
+    episode_reward = 0
+    losses_ep = []
+    
+    for step in range(max_steps):
+        action = agent.sample_action(state)
+        next_state, reward, done, _ , _= env.step(action)
+        
+        replay_buffer.store(state, action, reward, done, next_state)
+        if replay_buffer.size() > batch_size:
+            loss = agent.update(replay_buffer, frame_idx, batch_size)
+            losses_ep.append(loss)
+        
+        state = next_state
+        episode_reward += reward
+        frame_idx += 1
+      
+        if done:
+            break
+    episode += 1
+
+    rewards.append(episode_reward)
+    mean_rewards = mean(rewards[-window:])
+    print("\rEpisode {:d} Mean Rewards {:.2f}  Episode reward = {:.2f}".format(
+                            episode, mean_rewards, episode_reward), end="")
+
+plt.plot(rewards)
+plt.show()
