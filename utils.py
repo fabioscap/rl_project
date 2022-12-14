@@ -44,8 +44,8 @@ class UniformReplayBuffer():
 
         np.copyto(self.states[self.idx], s)
         np.copyto(self.actions[self.idx], a)
-        np.copyto(self.rewards[self.idx], r)
-        np.copyto(self.dones[self.idx],   d)
+        np.copyto(self.rewards[self.idx,...], r)
+        np.copyto(self.dones[self.idx,...],   d)
         np.copyto(self.next_states[self.idx], sp)
 
         return self.idx
