@@ -13,7 +13,9 @@ class Encoder(nn.Module):
                        ksize=3,
                        mlp_hidden_dims = (), 
                        hidden_act=nn.ReLU, 
-                       out_act=None):
+                       out_act=None,
+                       device="cpu"
+                       ):
         super().__init__()
 
         self.dim_in = dim_in
@@ -27,7 +29,7 @@ class Encoder(nn.Module):
             layers.append(nn.Conv2d(n_kernels,n_kernels,ksize))
             layers.append(hidden_act())
 
-        self.cnn = nn.Sequential(*layers)
+        self.cnn = nn.Sequential(*layers).to(device)
         
         # get flattened size through a forward
         with torch.no_grad():
@@ -35,7 +37,7 @@ class Encoder(nn.Module):
             out = self.cnn(_test)
             self.v_shape = out.flatten().shape[0]
 
-        self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act)
+        self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act).to(device)
 
     def forward(self, x): # x has shape (b,c,w,h)
         v = torch.flatten(self.cnn(x), start_dim = 1)
@@ -54,6 +56,7 @@ class FeatureEncoder(nn.Module):
                        tau = 0.005, # target update speed
                        C = 0.2,      # intrinsic weight
                        gamma = 2e-5, # intrinsic decay
+                       device="cpu",
                        ):
         super().__init__()
 
@@ -65,9 +68,9 @@ class FeatureEncoder(nn.Module):
         self.C = C
         self.gamma = gamma
 
-        self.query_encoder = Encoder(s_shape,s_dim)
+        self.query_encoder = Encoder(s_shape,s_dim, device)
 
-        self.key_encoder = Encoder(s_shape,s_dim)
+        self.key_encoder = Encoder(s_shape,s_dim, device)
         for param in self.key_encoder.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
         # copy params at start ?
@@ -76,7 +79,7 @@ class FeatureEncoder(nn.Module):
         self.action_encoder = make_MLP(a_shape, a_dim, a_hidden_dims, out_act=a_out_act)
         self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act) 
 
-        self.W = nn.Parameter(torch.rand((s_dim,s_dim))) # for bilinear product
+        self.W = nn.Parameter(torch.rand((s_dim,s_dim))).to(device) # for bilinear product
         self.sim_metrics = { # similarity metrics for contrastive loss
             # do the dot product on every pair: (k' k)
             "dot": lambda x,y: torch.einsum("ij, kj -> ik", x,y), 
