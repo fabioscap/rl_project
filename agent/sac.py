@@ -25,7 +25,6 @@ class SAC(nn.Module):
                 learnable_temperature: bool,
                 alpha_betas: tuple,
                 critic_tau: int,
-                train_alpha: bool
 
                 ):
         super().__init__()
@@ -69,13 +68,15 @@ class SAC(nn.Module):
                                                 lr=Q2_lr,
                                                 betas = critic_betas
                                                 )
+        self.learnable_temperature = learnable_temperature
+        
         self.log_alpha = torch.tensor(np.log(init_temperature))
-        if train_alpha:
+        if self.learnable_temperature:
           self.log_alpha.requires_grad = True
         else: 
           self.alpha = alpha
 
-        self.learnable_temperature = learnable_temperature 
+         
         self.target_entropy = -a_dim
 
         self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha],
@@ -230,4 +231,4 @@ class SAC(nn.Module):
         soft_update_params(self.Q_network1, self.Q_target1,self.critic_tau)
         soft_update_params(self.Q_network2, self.Q_target2,self.critic_tau)       
 
-        return loss1.item() + loss2.item() + loss3.item()  
+        return loss1.item() + loss2.item() + loss3.item()   
