@@ -4,6 +4,7 @@ import math
 import torch.nn as nn
 import torch 
 from collections import deque
+import gym
 
 class UniformReplayBuffer():
 
