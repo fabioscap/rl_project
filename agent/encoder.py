@@ -91,14 +91,23 @@ class FeatureEncoder(nn.Module):
         }
         self.max_intrinsic = 1e-8 # the maximum intrinsic reward (for normalization)
 
-    def encode(self, s: torch.Tensor)-> torch.Tensor:
+    def encode(self, s: torch.Tensor, 
+                     target=False, # whether to use key network
+                     grad=True,    # enable/disable gradient flow
+                     )-> torch.Tensor:
         # just encode a state to be passed to SAC
-        with torch.no_grad():
-            return self.query_encoder(s)
+        if target:
+            return self.key_encoder(s)
+        else:
+            if grad:
+                return self.query_encoder(s)
+            else:
+                with torch.no_grad():
+                    return self.query_encoder(s)
     
     def predict(self,s,a)-> torch.Tensor:
         # generate a prediciton for the new state
-        q = self.query_encoder(s) # encode the state
+        q = self.encode(s) # encode the state
         ae = self.action_encoder(a) # encode the action
         qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
 
@@ -117,7 +126,7 @@ class FeatureEncoder(nn.Module):
         qp = self.predict(s,a)
 
         # encode the next states in the transition
-        kp = self.key_encoder(sp)
+        kp = self.encode(sp, target=True)
 
         fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric])
 
@@ -130,7 +139,7 @@ class FeatureEncoder(nn.Module):
         qp = self.predict(s,a)
 
         # encode the next states in the transition
-        kp = self.key_encoder(sp)
+        kp = self.encode(sp, target=True)
 
         mse_loss = nn.functional.mse_loss(qp,kp)
 
