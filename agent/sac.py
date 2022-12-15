@@ -14,16 +14,24 @@ class SAC(nn.Module):
                 tau: float,
                 log_std_bounds: tuple,
                 alpha: float,
-                actor_lr = int,
-                Q1_lr = int,
-                Q2_lr = int,
-                epsilon = float,
+                actor_lr: int,
+                Q1_lr: int,
+                Q2_lr: int,
+                epsilon: float,
+                actor_betas: tuple,
+                critic_betas: tuple,
+                alpha_lr: int,
+                init_temperature: int,
+                learnable_temperature: bool,
+                alpha_betas: tuple,
+                critic_tau: int,
+                train_alpha: bool
 
                 ):
         super().__init__()
         self.Q_network1 = make_MLP(s_dim + a_dim, 1, Q_hidden_dims)
         self.Q_network2 = make_MLP(s_dim + a_dim, 1, Q_hidden_dims)
-
+      
         self.Q_target1 = make_MLP(s_dim + a_dim, 1, Q_hidden_dims)
         self.Q_target2 = make_MLP(s_dim + a_dim, 1, Q_hidden_dims)
 
@@ -41,21 +49,42 @@ class SAC(nn.Module):
 
         self.gamma = gamma
         self.tau = tau
-        self.alpha = alpha
+
         self.log_std_bounds = log_std_bounds
         self.a_dim = a_dim
         self.epsilon = epsilon
-
+        self.target_entropy = -a_dim
+        self.critic_tau = critic_tau
         self.critic1_loss = nn.MSELoss()
         self.critic2_loss = nn.MSELoss()
 
         self.actor_optimizer = torch.optim.Adam(self.policy_network.parameters(),
-                                                lr=actor_lr)
+                                                lr=actor_lr,
+                                                betas = actor_betas)
         self.Q_network1_optimizer = torch.optim.Adam(self.Q_network1.parameters(),
-                                                lr=Q1_lr)
+                                                lr=Q1_lr,
+                                                betas = critic_betas
+                                                )
         self.Q_network2_optimizer = torch.optim.Adam(self.Q_network2.parameters(),
-                                                lr=Q2_lr)                                                                      
-    
+                                                lr=Q2_lr,
+                                                betas = critic_betas
+                                                )
+        self.log_alpha = torch.tensor(np.log(init_temperature))
+        if train_alpha:
+          self.log_alpha.requires_grad = True
+        else: 
+          self.alpha = alpha
+
+        self.learnable_temperature = learnable_temperature 
+        self.target_entropy = -a_dim
+
+        self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha],
+                                                    lr=alpha_lr,
+                                                    betas=alpha_betas)                                                                    
+    @property
+    def alpha(self):
+        return self.log_alpha.exp()
+
     def rep_trick(self, mu, std):
         normal = Normal(0, 1)
         z = normal.sample()
@@ -74,16 +103,13 @@ class SAC(nn.Module):
         out = self.policy_network(state)
 
         if len(out) == 2*self.a_dim:
-
             mu = out[:self.a_dim]
-            
             log_std = out[self.a_dim:]
             
         else:
             mu = out[:, self.a_dim - 1]
             log_std = out[:,-1]
 
-        
         
         log_std = torch.tanh(log_std)
         log_std_min, log_std_max = self.log_std_bounds
@@ -139,7 +165,7 @@ class SAC(nn.Module):
 
 
     def alpha_decay(self):
-        self.alpha*=0.9
+        self.alpha*=0.8
 
     def update_policy(self, state, Q_net1, Q_net2):
 
@@ -147,14 +173,24 @@ class SAC(nn.Module):
         actor_Q = torch.min(Q_net1, Q_net2)
 
         # minus because we perform a gradient descent
-        actor_loss = -(actor_Q.detach() - self.alpha*log_prob).mean()
+        actor_loss = -(actor_Q - self.alpha*log_prob).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
+
+        if self.learnable_temperature:
+            self.log_alpha_optimizer.zero_grad()
+            alpha_loss = (self.alpha *
+                          (-log_prob - self.target_entropy).detach()).mean()
+ 
+            alpha_loss.backward()
+            self.log_alpha_optimizer.step()
+
         return actor_loss
 
     def update_Qnetworks(self, reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob):
+        
         Q_critic = torch.min(Q_targ1, Q_targ2)
         
         target = reward + self.gamma*(1-done)*(Q_critic - self.alpha*log_prob)
@@ -176,6 +212,7 @@ class SAC(nn.Module):
         action     = torch.FloatTensor(action)
         reward     = torch.FloatTensor(reward).unsqueeze(1)
         done       = torch.FloatTensor(np.float32(done)).unsqueeze(1)
+        
         log_prob, new_action = self.return_log(new_state)
 
         Q_net1, Q_net2 = self.Qnet_forward(state, action)
@@ -186,10 +223,11 @@ class SAC(nn.Module):
 
         dist = self.actor(state)
         dist = dist.unsqueeze(-1)
+
         Q1, Q2 = self.Qnet_forward(state, dist)
         loss3 = self.update_policy(state, Q1, Q2)
 
-        soft_update_params(self.Q_network1, self.Q_target1,0.01)
-        soft_update_params(self.Q_network2, self.Q_target2,0.01)       
+        soft_update_params(self.Q_network1, self.Q_target1,self.critic_tau)
+        soft_update_params(self.Q_network2, self.Q_target2,self.critic_tau)       
 
-        return loss1.item() + loss2.item() + loss3.item() 
+        return loss1.item() + loss2.item() + loss3.item()  
