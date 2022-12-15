@@ -4,6 +4,7 @@ import math
 import torch.nn as nn
 import torch 
 from collections import deque
+import gym
 
 class UniformReplayBuffer():
 
@@ -44,8 +45,8 @@ class UniformReplayBuffer():
 
         np.copyto(self.states[self.idx], s)
         np.copyto(self.actions[self.idx], a)
-        np.copyto(self.rewards[self.idx,...], r)
-        np.copyto(self.dones[self.idx,...],   d)
+        np.copyto(self.rewards[self.idx], r)
+        np.copyto(self.dones[self.idx],   d)
         np.copyto(self.next_states[self.idx], sp)
 
         return self.idx
@@ -197,11 +198,9 @@ class FrameStack():
 
     def append_frame(self, obs: np.ndarray):
         self.frame_stack.append(obs)
-        return self.get_state()
 
     def reset(self, obs: np.ndarray):
         self.frame_stack = deque(self.n_frames * [obs], maxlen=self.n_frames)
-        return self.get_state()
 
     def get_state(self)-> np.ndarray:
         frames = np.array(self.frame_stack,dtype=np.float32)
@@ -259,6 +258,24 @@ def soft_update_params(net, target_net, tau):
 def copy_params(copy_from: nn.Module, copy_to: nn.Module):
     copy_to.load_state_dict(copy_from.state_dict())
 
+class NormalizedActions(gym.ActionWrapper):
+    def action(self, action):
+        low  = self.action_space.low
+        high = self.action_space.high
+        
+        action = low + (action + 1.0) * 0.5 * (high - low)
+        action = np.clip(action, low, high)
+        
+        return action
+
+    def reverse_action(self, action):
+        low  = self.action_space.low
+        high = self.action_space.high
+        
+        action = 2 * (action - low) / (high - low) - 1
+        action = np.clip(action, low, high)
+        
+        return action
 # TODO 
 # pre processing observations (as they are generated)
 # - gray scale (?)
