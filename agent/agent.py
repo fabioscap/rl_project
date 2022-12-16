@@ -70,8 +70,8 @@ class Agent():
 
         # update the targets
         self.feature_encoder.update_key_network()
-        print("DONE")
         
+
     def sample_action(self, obs):
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
