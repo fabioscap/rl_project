@@ -208,12 +208,6 @@ class SAC(nn.Module):
 
         return critic1_loss, critic2_loss
     def update_SAC(self, state, reward, action, new_state, done):
-        state      = torch.FloatTensor(state)
-        new_state  = torch.FloatTensor(new_state)
-        action     = torch.FloatTensor(action)
-        reward     = torch.FloatTensor(reward).unsqueeze(1)
-        done       = torch.FloatTensor(np.float32(done)).unsqueeze(1)
-        
         log_prob, new_action = self.return_log(new_state)
 
         Q_net1, Q_net2 = self.Qnet_forward(state, action)
