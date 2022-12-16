@@ -113,7 +113,7 @@ class FeatureEncoder(nn.Module):
 
         return qp
 
-    def compute_contrastive_loss(self, s, a, sp, sim_metric="dot"):
+    def compute_contrastive_loss(self, qp, kp, sim_metric="dot"):
         # what is proposed in the paper is contrastive loss
         # between new states and predicted new state
 
@@ -122,33 +122,20 @@ class FeatureEncoder(nn.Module):
         # current states and does not involve the dynamics model.
         # this modification is not reported in the paper.
 
-        # fdm loss
-        qp = self.predict(s,a)
-
-        # encode the next states in the transition
-        kp = self.encode(sp, target=True)
-
         fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric])
 
         # TODO: curl loss ?
 
         return fdm_contrastive_loss
 
-    def compute_mse_loss(self, s, a, sp):
-        # fdm loss
-        qp = self.predict(s,a)
-
-        # encode the next states in the transition
-        kp = self.encode(sp, target=True)
+    def compute_mse_loss(self, qp, kp):
 
         mse_loss = nn.functional.mse_loss(qp,kp)
 
         return mse_loss
 
-    def compute_intrinsic_reward(self, s, a, sp, step, max_reward):
-        with torch.no_grad(): # don't backprop through intrinsic reward
-            qp = self.predict(s,a)
-            kp = self.key_encoder(sp)
+    def compute_intrinsic_reward(self, qp, kp, step, max_reward):
+        with torch.no_grad(): #  make sure you don't backprop through intrinsic reward
 
             # we try to use MSE as a dissimilarity metric
             pred_error = (qp-kp).pow(2).sum(dim=1).sqrt()
@@ -163,4 +150,20 @@ class FeatureEncoder(nn.Module):
 
     def update_key_network(self):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
+    
+    def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
+        q = self.encode(s, grad=True) # encode state with key encoder with grad
+                                      # in order to update the network through SAC loss
+        ae = self.action_encoder(a)  
+
+        qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
+
+        kp = self.encode(sp, target=True, grad=False) # encode keys with target
+                                                      # compute no gradient
         
+        ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
+
+        l = self.compute_contrastive_loss(qp, kp, sim_metric)
+
+
+        return q, ri, l
