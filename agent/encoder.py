@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-
+from math import exp
 from utils import make_MLP, infoNCE, soft_update_params, copy_params
 
 # neural network for query and key encoder
@@ -144,7 +144,7 @@ class FeatureEncoder(nn.Module):
             if max_error > self.max_intrinsic:
                 self.max_intrinsic = max_error
             
-            ri = self.C*torch.exp(-self.gamma*step)* pred_error * max_reward / self.max_intrinsic
+            ri = self.C*exp(-self.gamma*step)* pred_error * max_reward / self.max_intrinsic
 
             return ri
 
