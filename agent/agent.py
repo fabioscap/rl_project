@@ -1,26 +1,22 @@
-from sac import SAC
-from encoder import FeatureEncoder
+from .sac import SAC
+from .encoder import FeatureEncoder
 import torch
 import numpy as np
-from utils import soft_update_params, UniformReplayBuffer
 class Agent():
     def __init__(self,
                  obs_shape: tuple,
                  a_shape: tuple,
-                 n_frames: int, # how many frames to stack
                  s_dim: int, # state representation dimension
                  a_dim: int, # action representation dimension
                  encoder_lr = 1e-3,
                  encoder_betas = (0.9, 0.999),
                  device = "cpu"
                 ):
-        self.obs_shape = obs_shape
-        self.n_frames = n_frames
+        self.s_shape = obs_shape
         
-        self.s_shape = (self.obs_shape[0]*n_frames, *self.obs_shape[1:])
         self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device)
         self.sac = SAC(s_dim = s_dim, 
-                            a_dim = a_shape, # pass to SAC the actual action, not embedded
+                            a_dim = a_shape[0], # pass to SAC the actual action, not embedded
                             Q_hidden_dims=(256,),
                             policy_hidden_dims=(256,),
                             gamma = 0.99,
@@ -38,21 +34,22 @@ class Agent():
                             critic_betas = (0.9, 0.999),
                             alpha_lr = 1e-4,
                             alpha_betas = (0.9, 0.999),
-                            )
-
+                            ).to(device)
+        self.device = device
+        
         # optimizer
         self.encoder_optimizer = torch.optim.Adam(params=self.feature_encoder.parameters(),
                                                   lr=encoder_lr, betas=encoder_betas)
 
-    def update(self, replay_buffer: UniformReplayBuffer, batch_size: int, step: int):
+    def update(self, replay_buffer, step: int):
         # do sample
-        state, action, reward, done, new_state, *_ = replay_buffer.sample(batch_size)
+        state, action, reward, new_state, not_dones, *_ = replay_buffer.sample()
 
         state      = torch.FloatTensor(state)
         new_state  = torch.FloatTensor(new_state)
         action     = torch.FloatTensor(action)
         re         = torch.FloatTensor(reward).unsqueeze(1)
-        done       = torch.FloatTensor(np.float32(done)).unsqueeze(1)
+        done       = torch.FloatTensor(np.float32(~not_dones)).unsqueeze(1)
 
         q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step)
         reward = re + ri
@@ -69,6 +66,35 @@ class Agent():
         # update the targets
         self.feature_encoder.update_key_network()
 
-    def sample_action(self, state):
-        raise NotImplementedError()
+    def sample_action(self, obs):
+        with torch.no_grad():
+            obs = torch.FloatTensor(obs).to(self.device)
+            obs = obs.unsqueeze(0)
+            q = self.feature_encoder.encode(obs)
+            pi = self.sac.actor(q)
+            return pi.cpu().data.numpy().flatten()
 
+    def select_action(self,obs):
+        with torch.no_grad():
+            obs = torch.FloatTensor(obs).to(self.device)
+            obs = obs.unsqueeze(0)
+            q = self.feature_encoder.encode(obs)
+            #pi = self.sac.actor(q)
+            mu, _ = self.sac.policy_forward(q)
+            return mu.cpu().data.numpy().flatten()
+
+    def save(self, model_dir, step):
+        torch.save(
+            self.feature_encoder.state_dict(), '%s/encoder_%s.pt' % (model_dir, step)
+        )
+        torch.save(
+            self.sac.state_dict(), '%s/sac_%s.pt' % (model_dir, step)
+        )
+
+    def load(self, model_dir, step):
+        self.actor.load_state_dict(
+            torch.load('%s/encoder_%s.pt' % (model_dir, step))
+        )
+        self.critic.load_state_dict(
+            torch.load('%s/sac_%s.pt' % (model_dir, step))
+        )

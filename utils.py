@@ -1,215 +1,173 @@
+import torch
 import numpy as np
-import random
-import math
 import torch.nn as nn
-import torch 
-from collections import deque
 import gym
-from skimage.util.shape import view_as_windows
+import os
+from collections import deque
+import random
 
-class UniformReplayBuffer():
 
-    def __init__(self, capacity: int,   # the capacity of the buffer
-                       s_shape:  tuple, # the shape of a state
-                       a_shape:  tuple):   # the shape of an action
-        
-        self.s_shape = s_shape
-        self.a_shape = a_shape
+class eval_mode(object):
+    def __init__(self, *models):
+        self.models = models
 
+    def __enter__(self):
+        self.prev_states = []
+        for model in self.models:
+            self.prev_states.append(model.training)
+            model.train(False)
+
+    def __exit__(self, *args):
+        for model, state in zip(self.models, self.prev_states):
+            model.train(state)
+        return False
+
+
+def soft_update_params(net, target_net, tau):
+    for param, target_param in zip(net.parameters(), target_net.parameters()):
+        target_param.data.copy_(
+            tau * param.data + (1 - tau) * target_param.data
+        )
+
+
+def set_seed_everywhere(seed):
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+
+
+def module_hash(module):
+    result = 0
+    for tensor in module.state_dict().values():
+        result += tensor.sum().item()
+    return result
+
+
+def make_dir(dir_path):
+    try:
+        os.mkdir(dir_path)
+    except OSError:
+        pass
+    return dir_path
+
+
+def preprocess_obs(obs, bits=5):
+    """Preprocessing image, see https://arxiv.org/abs/1807.03039."""
+    bins = 2**bits
+    assert obs.dtype == torch.float32
+    if bits < 8:
+        obs = torch.floor(obs / 2**(8 - bits))
+    obs = obs / bins
+    obs = obs + torch.rand_like(obs) / bins
+    obs = obs - 0.5
+    return obs
+
+
+class ReplayBuffer(object):
+    """Buffer to store environment transitions."""
+    def __init__(self, obs_shape, action_shape, capacity, batch_size, device):
         self.capacity = capacity
-        self.idx = -1
+        self.batch_size = batch_size
+        self.device = device
 
-        self.states =      np.empty(shape=(capacity,*s_shape), dtype=np.float32)
-        self.actions =     np.empty(shape=(capacity,*a_shape), dtype=np.float32)
-        self.rewards =     np.empty(shape=capacity,            dtype=np.float32)
-        self.dones =       np.empty(shape=capacity,            dtype=np.bool8)
-        self.next_states = np.empty(shape=(capacity,*s_shape), dtype=np.float32)
+        # the proprioceptive obs is stored as float32, pixels obs as uint8
+        obs_dtype = np.float32 if len(obs_shape) == 1 else np.uint8
 
-        self.full = False # wether the buffer is full or it contains empty spots
+        self.obses = np.empty((capacity, *obs_shape), dtype=obs_dtype)
+        self.next_obses = np.empty((capacity, *obs_shape), dtype=obs_dtype)
+        self.actions = np.empty((capacity, *action_shape), dtype=np.float32)
+        self.rewards = np.empty((capacity, 1), dtype=np.float32)
+        self.not_dones = np.empty((capacity, 1), dtype=np.float32)
 
-    def size(self):
-        if self.full:
-            return self.capacity
-        else:
-            return self.idx+1
+        self.idx = 0
+        self.last_save = 0
+        self.full = False
 
-    def store(self, s: np.ndarray, 
-                    a: np.ndarray, # or int if discrete actions 
-                    r: float, 
-                    d: bool, 
-                    sp: np.ndarray) -> int:
-        
-        self.idx += 1
-        if (self.idx == self.capacity):
-            self.full = True # the buffer is full
-            self.idx = 0     # reset the index (start to overwrite old experiences)
+    def add(self, obs, action, reward, next_obs, done):
+        np.copyto(self.obses[self.idx], obs)
+        np.copyto(self.actions[self.idx], action)
+        np.copyto(self.rewards[self.idx], reward)
+        np.copyto(self.next_obses[self.idx], next_obs)
+        np.copyto(self.not_dones[self.idx], not done)
 
-        np.copyto(self.states[self.idx], s)
-        np.copyto(self.actions[self.idx], a)
-        np.copyto(self.rewards[self.idx], r)
-        np.copyto(self.dones[self.idx],   d)
-        np.copyto(self.next_states[self.idx], sp)
+        self.idx = (self.idx + 1) % self.capacity
+        self.full = self.full or self.idx == 0
 
-        return self.idx
+    def sample(self):
+        idxs = np.random.randint(
+            0, self.capacity if self.full else self.idx, size=self.batch_size
+        )
 
-    def sample_idxes_weights(self, n):
-        high = self.size()
-        return random.choices(population=range(high), k=n), None     
+        obses = torch.as_tensor(self.obses[idxs], device=self.device).float()
+        actions = torch.as_tensor(self.actions[idxs], device=self.device)
+        rewards = torch.as_tensor(self.rewards[idxs], device=self.device)
+        next_obses = torch.as_tensor(
+            self.next_obses[idxs], device=self.device
+        ).float()
+        not_dones = torch.as_tensor(self.not_dones[idxs], device=self.device)
 
-    def sample(self, n: int):
-        # random.sample performs sampling without replacement
-        idxes, w = self.sample_idxes_weights(n)
+        return obses, actions, rewards, next_obses, not_dones
 
-        states =     self.states[idxes]
-        actions =    self.actions[idxes]
-        rewards =    self.rewards[idxes]
-        dones =      self.dones[idxes]
-        next_states = self.next_states[idxes]
-
-        return (states,actions,rewards,dones,next_states,idxes,w)
-
-    def save(self, path):
-        raise NotImplementedError()
-
-    def load(self, path):
-        raise NotImplementedError()
-
-class PrioritizedReplayBuffer(UniformReplayBuffer):
-
-    def __init__(self, capacity: int, s_shape: tuple, a_shape=(1, ), alpha=0.6, beta_0=0.4, beta_inc=1.001):
-        super().__init__(capacity, s_shape, a_shape)
-        if math.ceil(math.log2(capacity)) != math.floor(math.log2(capacity)):
-            capacity = 2**math.ceil(math.log2(capacity))
-            print(f"rescaling buffer to the next power of two: {capacity}.")
-        
-        # store the priorities in a tree
-        self.priorities = SumTree(capacity)
-        self.max_priority = 1.0
-
-        self.alpha = alpha
-        self.beta = beta_0
-        self.beta_inc = beta_inc
-
-    def sample_idxes_weights(self, n):
-        high = self.size()
-
-        (idxes, Ps) = self.priorities.sample_batch(n)
-
-        w = (high*Ps)**-self.beta
-
-        w /= w.max()
-        if self.beta < 1: # beta annealing
-            self.beta*= self.beta_inc 
-
-        return idxes, w
-
-    def store(self, s: np.ndarray, 
-                    a: np.ndarray, # or int if discrete actions 
-                    r: float, 
-                    d: bool, 
-                    sp: np.ndarray):
-        super().store(s,a,r,d,sp)
-        self.priorities.set_priority(self.idx,self.max_priority)
-
-    def update_priorities(self, idxes, td_errors, eps=1e-6):
-        updated_priorities = np.abs(td_errors)**self.alpha + eps
-
-        _m = updated_priorities.max()
-        if _m > self.max_priority: # update the maximum priority
-            self.max_priority = _m
-
-        for i in range(len(idxes)):
-            self.priorities.set_priority(idxes[i],updated_priorities[i])
-
-class SumTree(): 
-
-    def __init__(self, n_bins):
-        self.n_bins = n_bins
-        self.size = 2*n_bins - 1
-        self.data = np.zeros(self.size)
-        self.height = math.log2(n_bins)
-
-    def _left(self, i):
-        return 2*i+1
-
-    def _right(self, i):
-        return 2*i+2
-
-    def _parent(self, i):
-        return (i-1) // 2
-
-    def _update_cumulative(self, i):
-        value_left = self.data[self._left(i)]
-        value_right = self.data[self._right(i)]
-        self.data[i] = value_left + value_right
-
-        if i == 0: # the root of the tree
+    def save(self, save_dir):
+        if self.idx == self.last_save:
             return
-        else: # update the parent
-            self._update_cumulative(self._parent(i)) 
+        path = os.path.join(save_dir, '%d_%d.pt' % (self.last_save, self.idx))
+        payload = [
+            self.obses[self.last_save:self.idx],
+            self.next_obses[self.last_save:self.idx],
+            self.actions[self.last_save:self.idx],
+            self.rewards[self.last_save:self.idx],
+            self.not_dones[self.last_save:self.idx]
+        ]
+        self.last_save = self.idx
+        torch.save(payload, path)
 
-    def _is_leaf(self, i):
-        # it is a leaf if it's stored in the last self.n_bins positions
-        return i >= self.size - self.n_bins 
+    def load(self, save_dir):
+        chunks = os.listdir(save_dir)
+        chucks = sorted(chunks, key=lambda x: int(x.split('_')[0]))
+        for chunk in chucks:
+            start, end = [int(x) for x in chunk.split('.')[0].split('_')]
+            path = os.path.join(save_dir, chunk)
+            payload = torch.load(path)
+            assert self.idx == start
+            self.obses[start:end] = payload[0]
+            self.next_obses[start:end] = payload[1]
+            self.actions[start:end] = payload[2]
+            self.rewards[start:end] = payload[3]
+            self.not_dones[start:end] = payload[4]
+            self.idx = end
 
-    def _importance_sampling(self, priority, i=0):
-        # https://adventuresinmachinelearning.com/sumtree-introduction-python/
-        if self._is_leaf(i):
-            # return transition to which i corresponds
-            return i - (self.size - self.n_bins), self.data[i] 
-        else:
-            value_left = self.data[self._left(i)]
-            # value_right = self.data[self._right(i)]
-            
-            if priority < value_left:
-                return self._importance_sampling(priority, self._left(i))
-            else: # priority >= value_left
-                return self._importance_sampling(priority-value_left, self._right(i))
 
-    def get_sum(self):
-        return self.data[0]        
+class FrameStack(gym.Wrapper):
+    def __init__(self, env, k):
+        gym.Wrapper.__init__(self, env)
+        self._k = k
+        self._frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=1,
+            shape=((shp[0] * k,) + shp[1:]),
+            dtype=env.observation_space.dtype
+        )
+        self._max_episode_steps = env._max_episode_steps
 
-    def set_priority(self, idx, priority):
-        # where is the leaf stored on the array
-        pos = self.size - self.n_bins + idx
+    def reset(self):
+        obs = self.env.reset()
+        for _ in range(self._k):
+            self._frames.append(obs)
+        return self._get_obs()
 
-        self.data[pos] = priority
-        self._update_cumulative(self._parent(pos))
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        self._frames.append(obs)
+        return self._get_obs(), reward, done, info
 
-    def sample_batch(self, k):
-        rng = self.get_sum() / k
-        # low variance sampling like in particle filter
-        unif = np.random.uniform() * rng
-        
-        idxes = np.zeros(k, dtype=np.uint32)
-        Ps = np.zeros(k)
-
-        for i in range(k):
-            idxes[i], Ps[i]  = self._importance_sampling(unif)
-            unif += rng
-        return idxes, Ps
-
-class FrameStack():
-
-    # stack n observation together to build the new state
-    def __init__(self, n_frames: int):
-        self.n_frames = n_frames
-
-        self.frame_stack = deque(maxlen=n_frames)
-
-    def append_frame(self, obs: np.ndarray):
-        self.frame_stack.append(obs)
-
-    def reset(self, obs: np.ndarray):
-        self.frame_stack = deque(self.n_frames * [obs], maxlen=self.n_frames)
-
-    def get_state(self)-> np.ndarray:
-        frames = np.array(self.frame_stack,dtype=np.float32)
-
-        # stack along channels
-        state = frames.reshape(-1, *frames.shape[2:]) # shape (N*C,W,H)
-
-        return state 
+    def _get_obs(self):
+        assert len(self._frames) == self._k
+        return np.concatenate(list(self._frames), axis=0)
 
 def make_MLP(in_dim: int, 
              out_dim: int, 
@@ -251,14 +209,6 @@ def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
 
     return nn.functional.cross_entropy(sims,labels)
 
-def soft_update_params(net, target_net, tau):
-    for param, target_param in zip(net.parameters(), target_net.parameters()):
-        target_param.data.copy_(
-            tau * param.data + (1 - tau) * target_param.data
-        )
-def copy_params(copy_from: nn.Module, copy_to: nn.Module):
-    copy_to.load_state_dict(copy_from.state_dict())
-
 class NormalizedActions(gym.ActionWrapper):
     def action(self, action):
         low  = self.action_space.low
@@ -277,53 +227,6 @@ class NormalizedActions(gym.ActionWrapper):
         action = np.clip(action, low, high)
         
         return action
-# TODO 
-# pre processing observations (as they are generated)
-# - gray scale (?)
-# - [0,255] -> [0,1]
-# - np -> torch (?)
 
-# center crop observations (as they are sampled)
-# - why do they center crop? (is it related to contrastive learning?) Yes (M)
-
-def random_crop(imgs, output_size): # REMBER to do imgs.detach().numpy()
-    """
-    Vectorized way to do random crop using sliding windows
-    and picking out random ones
-    args:
-        imgs, batch images with shape (B,C,H,W)
-    """
-    # batch size
-    n = imgs.shape[0]
-    img_size = imgs.shape[-1]
-    crop_max = img_size - output_size
-    imgs = np.transpose(imgs, (0, 2, 3, 1))
-    w1 = np.random.randint(0, crop_max, n)
-    h1 = np.random.randint(0, crop_max, n)
-    # creates all sliding windows combinations of size (output_size)
-    windows = view_as_windows(
-        imgs, (1, output_size, output_size, 1))[..., 0,:,:, 0]
-    # selects a random window for each batch element
-    cropped_imgs = windows[np.arange(n), w1, h1]
-    return cropped_imgs
-
-def center_crop_image(image, output_size): # it works for numpy array h x w x c
-    h, w = image.shape[1:]
-    new_h, new_w = output_size, output_size
-
-    top = (h - new_h)//2
-    left = (w - new_w)//2
-
-    image = image[:, top:top + new_h, left:left + new_w]
-    return image
-
-
-def center_crop_images(image, output_size): # it works for numpy array b x c x h x w
-    h, w = image.shape[2:]
-    new_h, new_w = output_size, output_size
-
-    top = (h - new_h)//2
-    left = (w - new_w)//2
-
-    image = image[:, :, top:top + new_h, left:left + new_w]
-    return image
+def copy_params(copy_from: nn.Module, copy_to: nn.Module):
+    copy_to.load_state_dict(copy_from.state_dict())

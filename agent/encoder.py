@@ -33,7 +33,7 @@ class Encoder(nn.Module):
         
         # get flattened size through a forward
         with torch.no_grad():
-            _test = torch.zeros(self.dim_in)
+            _test = torch.zeros(self.dim_in).to(device)
             out = self.cnn(_test)
             self.v_shape = out.flatten().shape[0]
 
@@ -68,15 +68,15 @@ class FeatureEncoder(nn.Module):
         self.C = C
         self.gamma = gamma
 
-        self.query_encoder = Encoder(s_shape,s_dim, device)
+        self.query_encoder = Encoder(s_shape,s_dim, device=device)
 
-        self.key_encoder = Encoder(s_shape,s_dim, device)
+        self.key_encoder = Encoder(s_shape,s_dim, device=device)
         for param in self.key_encoder.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
         # copy params at start ?
         copy_params(self.query_encoder, self.key_encoder)
 
-        self.action_encoder = make_MLP(a_shape, a_dim, a_hidden_dims, out_act=a_out_act)
+        self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act)
         self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act) 
 
         self.W = nn.Parameter(torch.rand((s_dim,s_dim))).to(device) # for bilinear product
