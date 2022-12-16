@@ -12,14 +12,6 @@ class Agent():
                  a_dim: int, # action representation dimension
                  encoder_lr = 1e-3,
                  encoder_betas = (0.9, 0.999),
-                 actor_lr = 1e-2,
-                 Q1_lr = 1e-2,
-                 Q2_lr = 1e-2, 
-                 actor_betas = (0.9, 0.999),
-                 critic_betas = (0.9, 0.999),
-                 alpha_lr = 1e-4,
-                 alpha_betas = (0.9, 0.999),
-
                  device = "cpu"
                 ):
         self.obs_shape = obs_shape
@@ -39,7 +31,13 @@ class Agent():
                             critic_tau = 0.005,
                             init_temperature = 0.1,
                             learnable_temperature = True,
-
+                            actor_lr = 1e-2,
+                            Q1_lr = 1e-2,
+                            Q2_lr = 1e-2, 
+                            actor_betas = (0.9, 0.999),
+                            critic_betas = (0.9, 0.999),
+                            alpha_lr = 1e-4,
+                            alpha_betas = (0.9, 0.999),
                             )
 
         # optimizer
