@@ -16,7 +16,7 @@ class Agent():
         
         self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device)
         self.sac = SAC(s_dim = s_dim, 
-                            a_dim = a_shape[0], # pass to SAC the actual action, not embedded
+                            a_dim = a_shape, # pass to SAC the actual action, not embedded
                             Q_hidden_dims=(256,),
                             policy_hidden_dims=(256,),
                             gamma = 0.99,
@@ -36,23 +36,28 @@ class Agent():
                             alpha_betas = (0.9, 0.999),
                             ).to(device)
         self.device = device
-        
+        self.training = True
         # optimizer
         self.encoder_optimizer = torch.optim.Adam(params=self.feature_encoder.parameters(),
                                                   lr=encoder_lr, betas=encoder_betas)
-
+    
     def update(self, replay_buffer, step: int):
         # do sample
-        state, action, reward, new_state, not_dones, *_ = replay_buffer.sample()
-
+        state, action, reward, new_state, dones, *_ = replay_buffer.sample()
+        
         state      = torch.FloatTensor(state)
         new_state  = torch.FloatTensor(new_state)
         action     = torch.FloatTensor(action)
-        re         = torch.FloatTensor(reward).unsqueeze(1)
-        done       = torch.FloatTensor(np.float32(~not_dones)).unsqueeze(1)
-
-        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step)
+        re         = torch.FloatTensor(reward)
+        done       = torch.FloatTensor(np.float32(dones))
+        
+        max_reward = max(re)
+        
+        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_reward)
+        ri = ri.unsqueeze(1)
+        
         reward = re + ri
+        
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
 
         self.sac.update_SAC(q, reward, action, qp, done)
@@ -65,6 +70,7 @@ class Agent():
 
         # update the targets
         self.feature_encoder.update_key_network()
+        
 
     def sample_action(self, obs):
         with torch.no_grad():
@@ -82,6 +88,15 @@ class Agent():
             #pi = self.sac.actor(q)
             mu, _ = self.sac.policy_forward(q)
             return mu.cpu().data.numpy().flatten()
+
+
+    def train(self, training=True):
+        self.training = training
+        self.sac.policy_network.train(training)
+        self.sac.Q_network1.train(training)
+        self.sac.Q_network2.train(training)
+        if self.feature_encoder is not None:
+            self.feature_encoder.train(training)
 
     def save(self, model_dir, step):
         torch.save(

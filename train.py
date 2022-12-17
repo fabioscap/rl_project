@@ -49,10 +49,11 @@ def evaluate(env, agent, video, num_episodes, L, step):
         video.init(enabled=(i == 0))
         done = False
         episode_reward = 0
-        while not done:
-            #with utils.eval_mode(agent):
-            action = agent.select_action(obs)
-            print(action)
+        while not done: 
+            with utils.eval_mode(agent):
+                action = agent.select_action(obs)
+                action = action.astype(np.float32)
+            
             obs, reward, done, _ = env.step(action)
             video.record(env)
             episode_reward += reward
@@ -114,7 +115,6 @@ def main():
     episode, episode_reward, done = 0, 0, True
     start_time = time.time()
     for step in range(num_train_steps):
-        print(step)
         if done:
             if step > 0:
                 L.log('train/duration', time.time() - start_time, step)
@@ -144,7 +144,7 @@ def main():
         if step < init_steps:
             action = env.action_space.sample()
         else:
-            with utils.eval_mode(agent):
+            with utils.eval_mode(agent): 
                 action = agent.sample_action(obs)
 
         # run training update
@@ -166,6 +166,7 @@ def main():
         obs = next_obs
         episode_step += 1
 
+      
 
 if __name__ == '__main__':
     main()

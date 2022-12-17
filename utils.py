@@ -79,7 +79,7 @@ class ReplayBuffer(object):
         self.next_obses = np.empty((capacity, *obs_shape), dtype=obs_dtype)
         self.actions = np.empty((capacity, *action_shape), dtype=np.float32)
         self.rewards = np.empty((capacity, 1), dtype=np.float32)
-        self.not_dones = np.empty((capacity, 1), dtype=np.float32)
+        self.dones = np.empty((capacity, 1), dtype=np.float32)
 
         self.idx = 0
         self.last_save = 0
@@ -90,7 +90,7 @@ class ReplayBuffer(object):
         np.copyto(self.actions[self.idx], action)
         np.copyto(self.rewards[self.idx], reward)
         np.copyto(self.next_obses[self.idx], next_obs)
-        np.copyto(self.not_dones[self.idx], not done)
+        np.copyto(self.dones[self.idx], done)
 
         self.idx = (self.idx + 1) % self.capacity
         self.full = self.full or self.idx == 0
@@ -106,9 +106,9 @@ class ReplayBuffer(object):
         next_obses = torch.as_tensor(
             self.next_obses[idxs], device=self.device
         ).float()
-        not_dones = torch.as_tensor(self.not_dones[idxs], device=self.device)
+        dones = torch.as_tensor(self.dones[idxs], device=self.device)
 
-        return obses, actions, rewards, next_obses, not_dones
+        return obses, actions, rewards, next_obses, dones
 
     def save(self, save_dir):
         if self.idx == self.last_save:
@@ -119,7 +119,7 @@ class ReplayBuffer(object):
             self.next_obses[self.last_save:self.idx],
             self.actions[self.last_save:self.idx],
             self.rewards[self.last_save:self.idx],
-            self.not_dones[self.last_save:self.idx]
+            self.dones[self.last_save:self.idx]
         ]
         self.last_save = self.idx
         torch.save(payload, path)
@@ -136,7 +136,7 @@ class ReplayBuffer(object):
             self.next_obses[start:end] = payload[1]
             self.actions[start:end] = payload[2]
             self.rewards[start:end] = payload[3]
-            self.not_dones[start:end] = payload[4]
+            self.dones[start:end] = payload[4]
             self.idx = end
 
 
@@ -172,8 +172,8 @@ class FrameStack(gym.Wrapper):
 def make_MLP(in_dim: int, 
              out_dim: int, 
              hidden_dims: tuple, 
-             hidden_act = nn.ReLU, 
-             out_act = None) -> nn.Module:
+             hidden_act = nn.Tanh, 
+             out_act = nn.Tanh) -> nn.Module:
     layers = []
     if len(hidden_dims) == 0:
         layers.append(nn.Linear(in_dim,out_dim))
