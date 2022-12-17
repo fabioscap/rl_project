@@ -42,9 +42,11 @@ class Agent():
                                                   lr=encoder_lr, betas=encoder_betas)
     
     def update(self, replay_buffer, step: int):
+        self.encoder_optimizer.zero_grad()
         # do sample
         state, action, reward, new_state, dones, *_ = replay_buffer.sample()
         state/= 255
+        new_state/=255
         
         state      = torch.FloatTensor(state)
         new_state  = torch.FloatTensor(new_state)
@@ -60,17 +62,17 @@ class Agent():
         reward = re + ri
         
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
-
-        self.sac.update_SAC(q, reward, action, qp, done)
+        sac_loss = self.sac.update_SAC(q, reward, action, qp, done)
+        
         # the encoder will also receive gradients due to the backward passes
         # in update_SAC
-
-        self.encoder_optimizer.zero_grad()
         contrastive_loss.backward()
         self.encoder_optimizer.step()
 
         # update the targets
         self.feature_encoder.update_key_network()
+
+        return contrastive_loss + sac_loss
 
     def sample_action(self, obs):
         with torch.no_grad():
