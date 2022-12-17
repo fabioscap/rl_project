@@ -104,13 +104,9 @@ class SAC(nn.Module):
         
         out = self.policy_network(state)
 
-        if len(out) == 2*self.num_actions:
-            mu = out[:self.num_actions]
-            log_std = out[self.num_actions:]
 
-        else:
-            mu = out[:, 0 : self.num_actions]
-            log_std = out[:,self.num_actions:]
+        mu = out[:, 0 : self.num_actions]
+        log_std = out[:,self.num_actions:]
 
         
         log_std = torch.tanh(log_std)
@@ -154,13 +150,12 @@ class SAC(nn.Module):
 
     def return_log(self, state):
         mu, std = self.policy_forward(state)
-
+        
         z = torch.randn_like(mu)
         action = self.rep_trick(mu, std)
         
         log_prob = self.gaussian_logprob(z,std.log())
-        if len(action) == 1:
-            action = action.unsqueeze(-1)
+  
         return log_prob, action
 
     def get_action(self,state):
@@ -215,7 +210,7 @@ class SAC(nn.Module):
         return critic1_loss, critic2_loss
     def update_SAC(self, state, reward, action, new_state, done):
         log_prob, new_action = self.return_log(new_state)
-
+        
         Q_net1, Q_net2 = self.Qnet_forward(state, action)
         
         Q_targ1, Q_targ2 = self.Qtarg_forward(new_state, new_action)
