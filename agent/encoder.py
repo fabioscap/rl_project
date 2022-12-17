@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 from math import exp
 from utils import make_MLP, infoNCE, soft_update_params, copy_params
-
+from torchvision import transforms
 # neural network for query and key encoder
 class Encoder(nn.Module):
 
@@ -96,6 +96,8 @@ class FeatureEncoder(nn.Module):
                      grad=True,    # enable/disable gradient flow
                      )-> torch.Tensor:
         # just encode a state to be passed to SAC
+        
+    
         if target:
             return self.key_encoder(s)
         else:
@@ -106,6 +108,7 @@ class FeatureEncoder(nn.Module):
                     return self.query_encoder(s)
     
     def predict(self,s,a)-> torch.Tensor:
+        
         # generate a prediciton for the new state
         q = self.encode(s) # encode the state
         ae = self.action_encoder(a) # encode the action
@@ -152,6 +155,7 @@ class FeatureEncoder(nn.Module):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
     
     def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
+        
         q = self.encode(s, grad=True) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
         ae = self.action_encoder(a)  

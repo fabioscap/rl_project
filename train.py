@@ -114,7 +114,8 @@ def main():
 
     episode, episode_reward, done = 0, 0, True
     start_time = time.time()
-    for step in range(num_train_steps):
+    for step in range(num_train_steps): 
+        
         if done:
             if step > 0:
                 L.log('train/duration', time.time() - start_time, step)
@@ -131,7 +132,8 @@ def main():
                     replay_buffer.save(buffer_dir)
 
             L.log('train/episode_reward', episode_reward, step)
-
+            
+            
             obs = env.reset()
             done = False
             episode_reward = 0
@@ -154,15 +156,15 @@ def main():
                 agent.update(replay_buffer, step)
 
         next_obs, reward, done, _ = env.step(action)
-
+      
         # allow infinit bootstrap
         done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(
             done
         )
         episode_reward += reward
-
+        
         replay_buffer.add(obs, action, reward, next_obs, done_bool)
-
+       
         obs = next_obs
         episode_step += 1
 
