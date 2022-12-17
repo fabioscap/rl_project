@@ -36,7 +36,7 @@ class Agent():
                             alpha_betas = (0.9, 0.999),
                             ).to(device)
         self.device = device
-        
+        self.training = True
         # optimizer
         self.encoder_optimizer = torch.optim.Adam(params=self.feature_encoder.parameters(),
                                                   lr=encoder_lr, betas=encoder_betas)
@@ -88,6 +88,15 @@ class Agent():
             #pi = self.sac.actor(q)
             mu, _ = self.sac.policy_forward(q)
             return mu.cpu().data.numpy().flatten()
+
+
+    def train(self, training=True):
+        self.training = training
+        self.sac.policy_network.train(training)
+        self.sac.Q_network1.train(training)
+        self.sac.Q_network2.train(training)
+        if self.feature_encoder is not None:
+            self.feature_encoder.train(training)
 
     def save(self, model_dir, step):
         torch.save(

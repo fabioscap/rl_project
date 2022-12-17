@@ -50,9 +50,9 @@ def evaluate(env, agent, video, num_episodes, L, step):
         done = False
         episode_reward = 0
         while not done: 
-            #with utils.eval_mode(agent):
-            action = agent.select_action(obs)
-            action = action.astype(np.float32)
+            with utils.eval_mode(agent):
+                action = agent.select_action(obs)
+                action = action.astype(np.float32)
             
             obs, reward, done, _ = env.step(action)
             video.record(env)
@@ -144,8 +144,8 @@ def main():
         if step < init_steps:
             action = env.action_space.sample()
         else:
-            #with utils.eval_mode(agent): ########## 
-            action = agent.sample_action(obs)
+            with utils.eval_mode(agent): 
+                action = agent.sample_action(obs)
 
         # run training update
         if step >= init_steps:
@@ -166,6 +166,7 @@ def main():
         obs = next_obs
         episode_step += 1
 
+      
 
 if __name__ == '__main__':
     main()
