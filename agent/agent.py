@@ -44,6 +44,7 @@ class Agent():
     def update(self, replay_buffer, step: int):
         # do sample
         state, action, reward, new_state, dones, *_ = replay_buffer.sample()
+        state/= 255
         
         state      = torch.FloatTensor(state)
         new_state  = torch.FloatTensor(new_state)
@@ -70,7 +71,6 @@ class Agent():
 
         # update the targets
         self.feature_encoder.update_key_network()
-        
 
     def sample_action(self, obs):
         with torch.no_grad():
