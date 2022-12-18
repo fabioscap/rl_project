@@ -20,7 +20,7 @@ class Encoder(nn.Module):
 
         self.dim_in = dim_in
         self.dim_out = dim_out
-
+        self.device = device
         layers = []
         layers.append(nn.Conv2d(dim_in[0],n_kernels,ksize))
         layers.append(hidden_act())
@@ -63,7 +63,7 @@ class FeatureEncoder(nn.Module):
         self.s_shape = s_shape
         self.a_shape = a_shape
         self.s_dim = s_dim
-
+        self.device = device
         self.tau = tau
         self.C = C
         self.gamma = gamma
@@ -77,7 +77,7 @@ class FeatureEncoder(nn.Module):
         copy_params(self.query_encoder, self.key_encoder)
 
         self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act).to(device)
-        self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act) 
+        self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act).to(device)
 
         self.W = nn.Parameter(torch.rand((s_dim,s_dim))).to(device) # for bilinear product
         self.sim_metrics = { # similarity metrics for contrastive loss
@@ -108,9 +108,9 @@ class FeatureEncoder(nn.Module):
     
     def predict(self,s,a)-> torch.Tensor:
         # generate a prediciton for the new state
-        q = self.encode(s) # encode the state
-        ae = self.action_encoder(a) # encode the action
-        qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
+        q = self.encode(s).to(self.device) # encode the state
+        ae = self.action_encoder(a).to(self.device) # encode the action
+        qp = self.fdm(torch.cat((q,ae),dim=1)).to(self.device) # predict new state
 
         return qp
 
@@ -153,18 +153,18 @@ class FeatureEncoder(nn.Module):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
     
     def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
-        q = self.encode(s, grad=True) # encode state with key encoder with grad
+        q = self.encode(s, grad=True).to(self.device) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
-        ae = self.action_encoder(a)  
+        ae = self.action_encoder(a).to(self.device)  
 
-        qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
+        qp = self.fdm(torch.cat((q,ae),dim=1)).to(self.device) # predict new state
 
-        kp = self.encode(sp, target=True, grad=False) # encode keys with target
+        kp = self.encode(sp, target=True, grad=False).to(self.device) # encode keys with target
                                                       # compute no gradient
         
-        ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
+        ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward).to(self.device)
 
-        l = self.compute_contrastive_loss(qp, kp, sim_metric)
+        l = self.compute_contrastive_loss(qp, kp, sim_metric).to(self.device)
 
 
         return q, ri, l

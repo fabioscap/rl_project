@@ -28,7 +28,7 @@ class SAC(nn.Module):
 
                 ):
         super().__init__()
-
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.num_actions = a_dim[0]
         
         self.Q_network1 = make_MLP(s_dim + self.num_actions, 1, Q_hidden_dims)

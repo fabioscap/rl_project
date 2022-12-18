@@ -14,7 +14,7 @@ class Agent():
                 ):
         self.s_shape = obs_shape
         
-        self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device)
+        self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device).to(device)
         self.sac = SAC(s_dim = s_dim, 
                             a_dim = a_shape, # pass to SAC the actual action, not embedded
                             Q_hidden_dims=(256,),
@@ -56,14 +56,18 @@ class Agent():
         new_state = new_state.to(self.device)
         done = dones.to(self.device)
 
-        max_reward = max(re)
+        max_reward = max(re).to(self.device)
         
         q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_reward)
         ri = ri.unsqueeze(1)
+
+        q = q.to(self.device)
+        ri = ri.to(self.device)
+       
         
         reward = re + ri
-        
-        qp = self.feature_encoder.encode(new_state, target=False, grad=False)
+        reward = reward.to(self.device)
+        qp = self.feature_encoder.encode(new_state, target=False, grad=False).to(self.device)
 
         sac_loss = self.sac.update_SAC(q, reward, action, qp, done)
         # the encoder will also receive gradients due to the backward passes

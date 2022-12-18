@@ -207,14 +207,14 @@ def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
     
     # q: (b,n)
     # k: (b,n)
-
+    device ='cuda' if torch.cuda.is_available() else 'cpu'
     # compute the similarities
     sims = similarity(queries,keys) # (b,b)
     # the diagonal elements can be interpreted as positive keys
     # the off diagonal as negative keys
 
     # compute the fake labels
-    labels = torch.arange(sims.shape[0], dtype=torch.long)
+    labels = torch.arange(sims.shape[0], dtype=torch.long).to(device)
 
     return nn.functional.cross_entropy(sims,labels)
 
