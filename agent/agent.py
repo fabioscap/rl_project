@@ -44,21 +44,20 @@ class Agent():
     def update(self, replay_buffer, step: int):
         self.encoder_optimizer.zero_grad()
         # do sample
-        state, action, reward, new_state, dones, *_ = replay_buffer.sample()
+        state, action, re, new_state, dones, *_ = replay_buffer.sample()
         state/= 255
         new_state/=255
         
-        state      = torch.FloatTensor(state)
-        new_state  = torch.FloatTensor(new_state)
-        action     = torch.FloatTensor(action)
-        re         = torch.FloatTensor(reward)
-        done       = torch.FloatTensor(np.float32(dones))
-        
+        state = state.to(self.device)
+        action = action.to(self.device)
+        re = re.to(self.device)
+        new_state = new_state.to(self.device)
+        done = dones.to(self.device)
+
         max_reward = max(re)
         
         q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_reward)
-        ri = ri.unsqueeze(1)
-        
+
         reward = re + ri
         
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
