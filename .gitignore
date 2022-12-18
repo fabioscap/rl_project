@@ -1,3 +1,7 @@
 _env/
 __pycache__/
 .vscode
+buffer/
+model/
+video/
+*.log
