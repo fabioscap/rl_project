@@ -192,7 +192,7 @@ def make_MLP(in_dim: int,
         return nn.Sequential(*layers)
 
 # implement the contrastive loss used in CURL, CCFDM
-def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
+def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity, device):
     # the positive key is at the same index as the query
     # the other indexes are the negative keys
     
@@ -205,7 +205,7 @@ def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
     # the off diagonal as negative keys
 
     # compute the fake labels
-    labels = torch.arange(sims.shape[0], dtype=torch.long)
+    labels = torch.arange(sims.shape[0], dtype=torch.long).to(device)
 
     return nn.functional.cross_entropy(sims,labels)
 

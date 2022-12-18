@@ -60,6 +60,8 @@ class FeatureEncoder(nn.Module):
                        ):
         super().__init__()
 
+        self.device = device
+
         self.s_shape = s_shape
         self.a_shape = a_shape
         self.s_dim = s_dim
@@ -76,8 +78,8 @@ class FeatureEncoder(nn.Module):
         # copy params at start ?
         copy_params(self.query_encoder, self.key_encoder)
 
-        self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act)
-        self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act) 
+        self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act).to(device)
+        self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act).to(device)
 
         self.W = nn.Parameter(torch.rand((s_dim,s_dim))).to(device) # for bilinear product
         self.sim_metrics = { # similarity metrics for contrastive loss
@@ -125,8 +127,8 @@ class FeatureEncoder(nn.Module):
         # current states and does not involve the dynamics model.
         # this modification is not reported in the paper.
 
-        fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric])
-
+        fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric], self.device)
+        
         # TODO: curl loss ?
 
         return fdm_contrastive_loss
@@ -155,7 +157,6 @@ class FeatureEncoder(nn.Module):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
     
     def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
-        
         q = self.encode(s, grad=True) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
         ae = self.action_encoder(a)  
