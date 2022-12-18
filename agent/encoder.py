@@ -151,7 +151,8 @@ class FeatureEncoder(nn.Module):
             
             ri = self.C*exp(-self.gamma*step)* pred_error * max_reward / self.max_intrinsic
 
-            return ri
+        
+            return ri.reshape(-1,1)
 
     def update_key_network(self):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
