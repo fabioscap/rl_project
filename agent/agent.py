@@ -40,7 +40,9 @@ class Agent():
         # optimizer
         self.encoder_optimizer = torch.optim.Adam(params=self.feature_encoder.parameters(),
                                                   lr=encoder_lr, betas=encoder_betas)
-    
+
+        self.max_extrinsic = 1e-8
+
     def update(self, replay_buffer, step: int):
         self.encoder_optimizer.zero_grad()
         # do sample
@@ -54,9 +56,11 @@ class Agent():
         new_state = new_state.to(self.device)
         done = dones.to(self.device)
 
-        max_reward = max(re)
-        
-        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_reward)
+        max_extrinsic = max(re)
+        if max_extrinsic > self.max_extrinsic:
+            self.max_extrinsic = max_extrinsic
+            
+        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_extrinsic)
 
         reward = re + ri
         
