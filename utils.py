@@ -169,6 +169,61 @@ class FrameStack(gym.Wrapper):
         assert len(self._frames) == self._k
         return np.concatenate(list(self._frames), axis=0)
 
+
+from dm_control.suite.wrappers import pixels
+from dm_env import specs
+from collections import OrderedDict
+class FrameStackDMC(pixels.Wrapper):
+    def __init__(self, env, n_frames = 3, render_kwargs=None, observation_key='pixels'):
+        super().__init__(env, pixels_only=True, render_kwargs=render_kwargs, observation_key=observation_key)
+
+        # we also transpose the values here
+        shape = self.observation_spec()[self._observation_key].shape
+        shape = (n_frames*shape[2],) + (shape[:2]) # (C,W,H)
+
+        self.dtype = self.observation_spec()[self._observation_key].dtype
+
+        pixels_spec = specs.Array(
+            shape=shape, dtype=self.dtype, name=self._observation_key)
+        self._observation_spec[observation_key] = pixels_spec
+        
+        self.n_frames = n_frames
+        self.frames = deque([], maxlen=n_frames)
+
+    def append_frame(self, obs: np.ndarray):
+        self.frames.append(obs)
+
+    def reset_frames(self, obs: np.ndarray):
+        self.frames = deque(self.n_frames * [obs], maxlen=self.n_frames)
+
+    def get_state(self)-> np.ndarray:
+        frames = np.array(self.frames,dtype=self.dtype)
+
+        # stack along channels
+        state = frames.reshape(-1, *frames.shape[2:]) # shape (N*C,W,H)
+
+        return state 
+
+    def reset(self):
+        time_step = self._env.reset()
+        return self._add_pixel_observation(time_step, reset=True)
+
+    def _add_pixel_observation(self, time_step, reset=False):
+        observation = OrderedDict()
+
+        pixels = self._env.physics.render(**self._render_kwargs).transpose(2,0,1)
+
+        if reset:
+            self.reset_frames(pixels)
+        else:
+            self.append_frame(pixels)
+            
+        observation[self._observation_key] = self.get_state()
+        return time_step._replace(observation=observation)
+
+
+
+
 def make_MLP(in_dim: int, 
              out_dim: int, 
              hidden_dims: tuple, 
