@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import os
 import time
-from dm_control.suite.wrappers import pixels
 from dm_control import suite
 
 import utils
@@ -12,24 +11,23 @@ from video import VideoRecorder
 from agent.agent import Agent
 
 
-seed = 1
-domain_name = "ball_in_cup"
-task_name = "catch"
-image_size = 16
+seed = 1834913
+domain_name = "cartpole"
+task_name = "balance"
+image_size = 32
 frame_stack = 2
 work_dir = '.'
 save_video = True
 
-replay_buffer_capacity = 1000
-batch_size = 2
+replay_buffer_capacity = 10000
+batch_size = 16
 
 s_dim = 16
-a_dim = 2
 
 num_train_steps = 1000000
 max_episode_steps = 1000
 
-init_steps = 4
+init_steps = 1000
 
 save_model = True
 save_buffer = True
@@ -78,7 +76,11 @@ def main():
                                              "height": image_size,
                                              "width":  image_size})
 
+
+
     action_spec = env.action_spec()
+    a_dim = action_spec.shape[0]
+
     action_shape = env.action_spec().shape
     observation_shape = env.observation_spec()['pixels'].shape
 
@@ -154,12 +156,16 @@ def main():
         if step >= init_steps:
             num_updates = init_steps if step == init_steps else 1
             for _ in range(num_updates):
-                agent.update(replay_buffer, step)
+                lcont, lc1, lc2, la = agent.update(replay_buffer, step)
+                L.log('train_critic/loss', lc1 + lc2, step)
+                L.log('train_actor/loss', la, step)
+                L.log('train_ae/loss', lcont, step)
         
         time_step = env.step(action)
         
         next_obs = time_step.observation['pixels']
         reward = time_step.reward if not time_step.first() else 0.0
+
         # allow infinit bootstrap
         done = time_step.last()
         done_bool = 0 if episode_step + 1 == max_episode_steps else float(

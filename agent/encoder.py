@@ -50,10 +50,10 @@ class FeatureEncoder(nn.Module):
                        s_dim:   int,   # latent state space dimension
                        a_dim:   int,   # latent action space dimension
                        a_hidden_dims = (50,50,), # action embedding MLP hidden layers
-                       a_out_act = nn.Tanh,      # action embedding output activation
+                       a_out_act = None,      # action embedding output activation
                        fdm_hidden_dims = (50,50,), # fwd dynamics MLP hidden layers
                        fdm_out_act = None,         # fwd dynamics MLP output activation
-                       tau = 0.005, # target update speed
+                       tau = 0.002, # target update speed
                        C = 0.2,      # intrinsic weight
                        gamma = 2e-5, # intrinsic decay
                        device="cpu",
@@ -78,7 +78,7 @@ class FeatureEncoder(nn.Module):
         # copy params at start ?
         copy_params(self.query_encoder, self.key_encoder)
 
-        self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act).to(device)
+        # self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act).to(device)
         self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act).to(device)
 
         self.W = nn.Parameter(torch.rand((s_dim,s_dim))).to(device) # for bilinear product
@@ -128,15 +128,14 @@ class FeatureEncoder(nn.Module):
         # this modification is not reported in the paper.
 
         fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric], self.device)
-        
         # TODO: curl loss ?
 
         return fdm_contrastive_loss
 
     def compute_mse_loss(self, qp, kp):
-
+        
         mse_loss = nn.functional.mse_loss(qp,kp)
-
+        
         return mse_loss
 
     def compute_intrinsic_reward(self, qp, kp, step, max_reward):
@@ -148,8 +147,8 @@ class FeatureEncoder(nn.Module):
             max_error = max(pred_error)
             if max_error > self.max_intrinsic:
                 self.max_intrinsic = max_error
-            
-            ri = self.C*exp(-self.gamma*step)* pred_error * max_reward / self.max_intrinsic
+
+            ri = self.C*exp(-self.gamma*step)* pred_error * (max_reward / self.max_intrinsic)
 
         
             return ri.reshape(-1,1)
@@ -160,16 +159,19 @@ class FeatureEncoder(nn.Module):
     def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
         q = self.encode(s, grad=True) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
-        ae = self.action_encoder(a)  
+        # ae = self.action_encoder(a)  
+        ae = a
 
         qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
 
         kp = self.encode(sp, target=True, grad=False) # encode keys with target
                                                       # compute no gradient
-        
+
         ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
 
-        l = self.compute_contrastive_loss(qp, kp, sim_metric)
+        l_c = self.compute_contrastive_loss(qp, kp, sim_metric)
 
+        l_r = self.compute_mse_loss(qp,kp)
+        weight = 0.5
 
-        return q, ri, l
+        return q, ri, weight*l_c + (1-weight)*l_r

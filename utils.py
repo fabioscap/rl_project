@@ -139,37 +139,6 @@ class ReplayBuffer(object):
             self.dones[start:end] = payload[4]
             self.idx = end
 
-
-class FrameStack(gym.Wrapper):
-    def __init__(self, env, k):
-        gym.Wrapper.__init__(self, env)
-        self._k = k
-        self._frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
-        self.observation_space = gym.spaces.Box(
-            low=0,
-            high=1,
-            shape=((shp[0] * k,) + shp[1:]),
-            dtype=env.observation_space.dtype
-        )
-        self._max_episode_steps = env._max_episode_steps
-
-    def reset(self):
-        obs = self.env.reset()
-        for _ in range(self._k):
-            self._frames.append(obs)
-        return self._get_obs()
-
-    def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        self._frames.append(obs)
-        return self._get_obs(), reward, done, info
-
-    def _get_obs(self):
-        assert len(self._frames) == self._k
-        return np.concatenate(list(self._frames), axis=0)
-
-
 from dm_control.suite.wrappers import pixels
 from dm_env import specs
 from collections import OrderedDict
@@ -228,7 +197,7 @@ def make_MLP(in_dim: int,
              out_dim: int, 
              hidden_dims: tuple, 
              hidden_act = nn.Tanh, 
-             out_act = nn.Tanh) -> nn.Module:
+             out_act = None) -> nn.Module:
     layers = []
     if len(hidden_dims) == 0:
         layers.append(nn.Linear(in_dim,out_dim))

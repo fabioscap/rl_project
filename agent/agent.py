@@ -34,6 +34,7 @@ class Agent():
                             critic_betas = (0.9, 0.999),
                             alpha_lr = 1e-4,
                             alpha_betas = (0.9, 0.999),
+                            device=device
                             ).to(device)
         self.device = device
         self.training = True
@@ -60,12 +61,12 @@ class Agent():
         if max_extrinsic > self.max_extrinsic:
             self.max_extrinsic = max_extrinsic
             
-        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_extrinsic)
+        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, self.max_extrinsic)
 
         reward = re + ri
         
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
-        sac_loss = self.sac.update_SAC(q, reward, action, qp, done)
+        lc1, lc2, la = self.sac.update_SAC(q, reward, action, qp, done)
         
         # the encoder will also receive gradients due to the backward passes
         # in update_SAC
@@ -75,7 +76,7 @@ class Agent():
         # update the targets
         self.feature_encoder.update_key_network()
 
-        return contrastive_loss + sac_loss
+        return contrastive_loss.item(), lc1, lc2, la
 
     def sample_action(self, obs):
         with torch.no_grad():
