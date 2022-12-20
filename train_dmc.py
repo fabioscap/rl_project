@@ -10,30 +10,60 @@ from video import VideoRecorder
 
 from agent.agent import Agent
 
+import argparse
+def parse_args():
+    parser = argparse.ArgumentParser()
+    # environment
+    parser.add_argument('--domain_name', default='cheetah')
+    parser.add_argument('--task_name', default='run')
 
-seed = 1834913
-domain_name = "cartpole"
-task_name = "balance"
-image_size = 32
-frame_stack = 2
-work_dir = '.'
-save_video = True
+    parser.add_argument('--image_size', default=64, type=int)
+    parser.add_argument('--frame_stack', default=3, type=int)
+    # replay buffer
+    parser.add_argument('--replay_buffer_capacity', default=100000, type=int)
+    # train
+    parser.add_argument('--init_steps', default=1000, type=int)
+    parser.add_argument('--num_train_steps', default=1000000, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--s_dim', default=32, type=int)
+    # eval
+    parser.add_argument('--eval_freq', default=1000, type=int)
+    parser.add_argument('--num_eval_episodes', default=10, type=int)
+    # misc
+    parser.add_argument('--seed', default=1834913, type=int)
+    parser.add_argument('--work_dir', default='.', type=str)
+    parser.add_argument('--save_buffer', default=True, action='store_true')
+    parser.add_argument('--save_video', default=True, action='store_true')
+    parser.add_argument('--save_model', default=True, action='store_true')
 
-replay_buffer_capacity = 10000
-batch_size = 16
+    args = parser.parse_args()
+    return args
 
-s_dim = 16
+args = parse_args()
 
-num_train_steps = 1000000
+seed = args.seed
+domain_name = args.domain_name
+task_name = args.task_name
+image_size = args.image_size
+frame_stack = args.frame_stack
+work_dir = args.work_dir
+save_video = args.save_video
+
+replay_buffer_capacity = args.replay_buffer_capacity
+batch_size = args.batch_size
+
+s_dim = args.s_dim
+
+num_train_steps = args.num_train_steps
 max_episode_steps = 1000
 
-init_steps = 1000
+init_steps = args.init_steps
 
-save_model = True
-save_buffer = True
+save_model = args.save_model
+save_buffer = args.save_buffer
 
-num_eval_episodes = 10
-eval_frequency = 1000
+num_eval_episodes = args.num_eval_episodes
+eval_frequency = args.eval_freq
 
 def evaluate(env, agent, video, num_episodes, L, step):
     for i in range(num_episodes):
