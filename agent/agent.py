@@ -1,5 +1,4 @@
 from .sac import SAC
-from ._sac import SacAeAgent
 from .encoder import FeatureEncoder
 import torch
 import numpy as np
