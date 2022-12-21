@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from math import exp
-from utils import make_MLP, infoNCE, soft_update_params, copy_params
+from utils import make_MLP, infoNCE, soft_update_params, copy_params, random_crop, center_crop_images
 from torchvision import transforms
 # neural network for query and key encoder
 class Encoder(nn.Module):
@@ -22,10 +22,13 @@ class Encoder(nn.Module):
         self.dim_out = dim_out
 
         layers = []
-        layers.append(nn.Conv2d(dim_in[0],n_kernels,ksize))
+        layers.append(nn.Conv2d(dim_in[0],16,ksize))
+        layers.append(hidden_act())
+        layers.append(nn.Conv2d(16,n_kernels,ksize))
         layers.append(hidden_act())
 
         for l in range(n_layers -1):
+            layers.append(nn.MaxPool2d(kernel_size=(2,2)))
             layers.append(nn.Conv2d(n_kernels,n_kernels,ksize))
             layers.append(hidden_act())
 
@@ -45,7 +48,7 @@ class Encoder(nn.Module):
 
 # the whole encoder
 class FeatureEncoder(nn.Module):
-    def __init__(self, s_shape: tuple, # state shape (already stacked, preprocessed)
+    def __init__(self, s_crop_shape: tuple,
                        a_shape: int, # action shape
                        s_dim:   int,   # latent state space dimension
                        a_dim:   int,   # latent action space dimension
@@ -62,7 +65,7 @@ class FeatureEncoder(nn.Module):
 
         self.device = device
 
-        self.s_shape = s_shape
+        self.s_crop_shape = s_crop_shape
         self.a_shape = a_shape
         self.s_dim = s_dim
 
@@ -70,15 +73,14 @@ class FeatureEncoder(nn.Module):
         self.C = C
         self.gamma = gamma
 
-        self.query_encoder = Encoder(s_shape,s_dim, device=device)
-
-        self.key_encoder = Encoder(s_shape,s_dim, device=device)
+        self.query_encoder = Encoder(s_crop_shape,s_dim, device=device)
+        self.key_encoder = Encoder(s_crop_shape,s_dim, device=device)
         for param in self.key_encoder.parameters(): 
             param.requires_grad = False # disable gradient computation for target network
         # copy params at start ?
         copy_params(self.query_encoder, self.key_encoder)
 
-        # self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act).to(device)
+        self.action_encoder = make_MLP(a_shape[0], a_dim, a_hidden_dims, out_act=a_out_act).to(device)
         self.fdm = make_MLP(s_dim+a_dim,s_dim,fdm_hidden_dims,out_act=fdm_out_act).to(device)
 
         self.W = nn.Parameter(torch.rand((s_dim,s_dim))).to(device) # for bilinear product
@@ -96,27 +98,21 @@ class FeatureEncoder(nn.Module):
     def encode(self, s: torch.Tensor, 
                      target=False, # whether to use key network
                      grad=True,    # enable/disable gradient flow
-                     )-> torch.Tensor:
-        # just encode a state to be passed to SAC
+                     center_crop=False)-> torch.Tensor:
         
-    
+        if center_crop:
+            cropped = center_crop_images(s, self.s_crop_shape[-1]) # s is a single state
+        else:
+            cropped = random_crop(s, self.s_crop_shape[-1]) # s is a batch of states
+        cropped = cropped.to(self.device)
         if target:
-            return self.key_encoder(s)
+            return self.key_encoder(cropped)
         else:
             if grad:
-                return self.query_encoder(s)
+                return self.query_encoder(cropped)
             else:
                 with torch.no_grad():
-                    return self.query_encoder(s)
-    
-    def predict(self,s,a)-> torch.Tensor:
-        
-        # generate a prediciton for the new state
-        q = self.encode(s) # encode the state
-        ae = self.action_encoder(a) # encode the action
-        qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
-
-        return qp
+                    return self.query_encoder(cropped)
 
     def compute_contrastive_loss(self, qp, kp, sim_metric="dot"):
         # what is proposed in the paper is contrastive loss
@@ -127,10 +123,8 @@ class FeatureEncoder(nn.Module):
         # current states and does not involve the dynamics model.
         # this modification is not reported in the paper.
 
-        fdm_contrastive_loss = infoNCE(qp,kp,self.sim_metrics[sim_metric], self.device)
-        # TODO: curl loss ?
-
-        return fdm_contrastive_loss
+        return infoNCE(qp,kp,self.sim_metrics[sim_metric], self.device)
+      
 
     def compute_mse_loss(self, qp, kp):
         
@@ -150,28 +144,28 @@ class FeatureEncoder(nn.Module):
 
             ri = self.C*exp(-self.gamma*step)* pred_error * (max_reward / self.max_intrinsic)
 
-        
             return ri.reshape(-1,1)
 
     def update_key_network(self):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
     
     def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
-        q = self.encode(s, grad=True) # encode state with key encoder with grad
+        q = self.encode(s, target=False, grad=True, center_crop=False) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
-        # ae = self.action_encoder(a)  
-        ae = a
+        k_anch = self.encode(s.clone(), target=True, center_crop=False) # for CURL
+        
+        curl_loss = self.compute_contrastive_loss(q,k_anch,sim_metric)
 
-        qp = self.fdm(torch.cat((q,ae),dim=1)) # predict new state
+        ae = self.action_encoder(a)  
+        qp = self.fdm(torch.cat((q,ae),dim=1)) # for FDM loss
 
-        kp = self.encode(sp, target=True, grad=False) # encode keys with target
+        kp = self.encode(sp, target=True, grad=False, center_crop=False) # encode keys with target
                                                       # compute no gradient
+
+        fdm_loss = self.compute_contrastive_loss(qp, kp, sim_metric)
 
         ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
 
-        l_c = self.compute_contrastive_loss(qp, kp, sim_metric)
+        weight = 0.2
 
-        l_r = self.compute_mse_loss(qp,kp)
-        weight = 0.5
-
-        return q, ri, weight*l_c + (1-weight)*l_r
+        return q, ri, weight*curl_loss + (1-weight)*fdm_loss

@@ -14,21 +14,24 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser()
     # environment
-    parser.add_argument('--domain_name', default='cheetah')
-    parser.add_argument('--task_name', default='run')
+    parser.add_argument('--domain_name', default='cartpole')
+    parser.add_argument('--task_name', default='balance')
 
-    parser.add_argument('--image_size', default=64, type=int)
+    parser.add_argument('--image_size', default=100, type=int)
     parser.add_argument('--frame_stack', default=3, type=int)
+    parser.add_argument('--image_crop_size', default=64, type=int)
+    
     # replay buffer
     parser.add_argument('--replay_buffer_capacity', default=100000, type=int)
     # train
-    parser.add_argument('--init_steps', default=1000, type=int)
+    parser.add_argument('--init_steps', default=1990, type=int)
     parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--s_dim', default=32, type=int)
+    parser.add_argument('--a_dim', default=16, type=int)
     # eval
     parser.add_argument('--eval_freq', default=1000, type=int)
-    parser.add_argument('--num_eval_episodes', default=10, type=int)
+    parser.add_argument('--num_eval_episodes', default=3, type=int)
     # misc
     parser.add_argument('--seed', default=1834913, type=int)
     parser.add_argument('--work_dir', default='.', type=str)
@@ -45,6 +48,7 @@ seed = args.seed
 domain_name = args.domain_name
 task_name = args.task_name
 image_size = args.image_size
+image_cropped_size = args.image_crop_size
 frame_stack = args.frame_stack
 work_dir = args.work_dir
 save_video = args.save_video
@@ -53,6 +57,7 @@ replay_buffer_capacity = args.replay_buffer_capacity
 batch_size = args.batch_size
 
 s_dim = args.s_dim
+a_dim = args.a_dim
 
 num_train_steps = args.num_train_steps
 max_episode_steps = 1000
@@ -113,6 +118,7 @@ def main():
 
     action_shape = env.action_spec().shape
     observation_shape = env.observation_spec()['pixels'].shape
+    observation_cropped_shape = observation_shape[0:1] + (image_cropped_size, image_cropped_size)
 
     utils.make_dir(work_dir)
     video_dir = utils.make_dir(os.path.join(work_dir, 'video'))
@@ -132,7 +138,7 @@ def main():
     )
 
     agent = Agent(
-        obs_shape=observation_shape,
+        obs_cropped_shape=observation_cropped_shape,
         a_shape=action_shape,
         s_dim = s_dim,
         a_dim = a_dim,
@@ -186,11 +192,8 @@ def main():
         if step >= init_steps:
             num_updates = init_steps if step == init_steps else 1
             for _ in range(num_updates):
-                lcont, lc1, lc2, la = agent.update(replay_buffer, step)
-                L.log('train_critic/loss', lc1 + lc2, step)
-                L.log('train_actor/loss', la, step)
-                L.log('train_ae/loss', lcont, step)
-        
+                agent.update(replay_buffer, step, L)
+
         time_step = env.step(action)
         
         next_obs = time_step.observation['pixels']

@@ -48,7 +48,7 @@ class SAC(nn.Module):
         copy_params(self.Q_network1, self.Q_target1)
         copy_params(self.Q_network2, self.Q_target2)
 
-        self.policy_network = make_MLP(s_dim, 2* self.num_actions, policy_hidden_dims) 
+        self.policy_network = make_MLP(s_dim, 2* self.num_actions, policy_hidden_dims)
                                               # half for the mean
                                               # and half for the (log) std
 
@@ -236,15 +236,13 @@ class SAC(nn.Module):
 
     def sample_action(self, obs):
         with torch.no_grad():
-            obs = torch.FloatTensor(obs).to(self.device)
-            obs = obs.unsqueeze(0)
+            obs = obs.to(self.device)
             pi = self.actor(obs)
             return pi.cpu().data.numpy().flatten()
 
     def select_action(self,obs):
         with torch.no_grad():
-            obs = torch.FloatTensor(obs).to(self.device)
-            obs = obs.unsqueeze(0)
+            obs = obs.to(self.device)
             #pi = self.sac.actor(q)
             mu, _ = self.policy_forward(obs)
             return mu.cpu().data.numpy().flatten()

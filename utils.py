@@ -196,7 +196,7 @@ class FrameStackDMC(pixels.Wrapper):
 def make_MLP(in_dim: int, 
              out_dim: int, 
              hidden_dims: tuple, 
-             hidden_act = nn.Tanh, 
+             hidden_act = nn.ReLU, 
              out_act = None) -> nn.Module:
     layers = []
     if len(hidden_dims) == 0:
@@ -255,7 +255,7 @@ class NormalizedActions(gym.ActionWrapper):
 def copy_params(copy_from: nn.Module, copy_to: nn.Module):
     copy_to.load_state_dict(copy_from.state_dict())
 
-def random_crop(imgs, output_size):
+def random_crop(imgs_torch: torch.Tensor, output_size):
     """
     Vectorized way to do random crop using sliding windows
     and picking out random ones
@@ -263,6 +263,7 @@ def random_crop(imgs, output_size):
         imgs, batch images with shape (B,C,H,W)
     """
     # batch size
+    imgs = imgs_torch.cpu().numpy()
     n = imgs.shape[0]
     img_size = imgs.shape[-1]
     crop_max = img_size - output_size
@@ -274,11 +275,11 @@ def random_crop(imgs, output_size):
         imgs, (1, output_size, output_size, 1))[..., 0,:,:, 0]
     # selects a random window for each batch element
     cropped_imgs = windows[np.arange(n), w1, h1]
-    return cropped_imgs
+    return torch.from_numpy(cropped_imgs)
 
 def center_crop_image(image, output_size):
     h, w = image.shape[1:]
-    new_h, new_w = output_size, output_size
+    new_h, new_w = output_size[1:]
 
     top = (h - new_h)//2
     left = (w - new_w)//2
