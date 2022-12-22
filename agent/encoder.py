@@ -41,7 +41,7 @@ class Encoder(nn.Module):
             self.v_shape = out.flatten().shape[0]
 
         self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act).to(device)
-        self.layer_norm = nn.LayerNorm(self.dim_out)
+        self.layer_norm = nn.LayerNorm(self.dim_out).to(device)
 
     def forward(self, x): # x has shape (b,c,w,h)
         v = torch.flatten(self.cnn(x), start_dim = 1)
