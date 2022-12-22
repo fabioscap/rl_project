@@ -17,8 +17,8 @@ class Agent():
         self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device)
         self.sac = SAC(s_dim = s_dim, 
                             a_dim = a_shape, # pass to SAC the actual action, not embedded
-                            Q_hidden_dims=(256,),
-                            policy_hidden_dims=(256,),
+                            Q_hidden_dims=(1024,),
+                            policy_hidden_dims=(1024,),
                             gamma = 0.99,
                             tau = 0.01, 
                             log_std_bounds=(-10,2),

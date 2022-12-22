@@ -224,9 +224,12 @@ def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity, device):
     # k: (b,n)
 
     # compute the similarities
-    sims = similarity(queries,keys) # (b,b)
+    sims:torch.Tensor = similarity(queries,keys) # (b,b)
     # the diagonal elements can be interpreted as positive keys
     # the off diagonal as negative keys
+
+    # subtract the max for stability
+    sims = sims - torch.max(sims, 1)[0][:, None]
 
     # compute the fake labels
     labels = torch.arange(sims.shape[0], dtype=torch.long).to(device)
