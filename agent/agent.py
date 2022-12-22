@@ -7,14 +7,13 @@ class Agent():
                  obs_shape: tuple,
                  a_shape: tuple,
                  s_dim: int, # state representation dimension
-                 a_dim: int, # action representation dimension
                  encoder_lr = 1e-3,
                  encoder_betas = (0.9, 0.999),
                  device = "cpu"
                 ):
         self.s_shape = obs_shape
         
-        self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device)
+        self.feature_encoder = FeatureEncoder(self.s_shape, s_dim, device=device)
         self.sac = SAC(s_dim = s_dim, 
                             a_dim = a_shape, # pass to SAC the actual action, not embedded
                             Q_hidden_dims=(256,),
@@ -43,27 +42,23 @@ class Agent():
 
         self.max_extrinsic = 1e-8
 
-    def update(self, replay_buffer, step: int):
+    def update(self, replay_buffer):
         self.encoder_optimizer.zero_grad()
         # do sample
-        state, action, re, new_state, dones, *_ = replay_buffer.sample()
+        state, action, re, new_state, dones, cpc_kwargs = replay_buffer.sample()
         state/= 255
         new_state/=255
         
         state = state.to(self.device)
         action = action.to(self.device)
-        re = re.to(self.device)
+        reward = re.to(self.device)
         new_state = new_state.to(self.device)
         done = dones.to(self.device)
 
-        max_extrinsic = max(re)
-        if max_extrinsic > self.max_extrinsic:
-            self.max_extrinsic = max_extrinsic
-            
-        q, ri, contrastive_loss = self.feature_encoder.encode_reward_loss(state,action,new_state, step, max_extrinsic)
+        obs_anchor, pos_anchor = cpc_kwargs["obs_anchor"], cpc_kwargs["obs_pos"]
+        q, contrastive_loss = self.feature_encoder.encode_reward_loss(obs_anchor, pos_anchor)
 
-        reward = re + ri
-        
+          
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
         sac_loss = self.sac.update_SAC(q, reward, action, qp, done)
         
@@ -89,7 +84,7 @@ class Agent():
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
             obs = obs.unsqueeze(0)
-            q = self.feature_encoder.encode(obs)
+            q = self.feature_encoder.encode(obs, target = False, grad = False)
             #pi = self.sac.actor(q)
             mu, _ = self.sac.policy_forward(q)
             return mu.cpu().data.numpy().flatten()

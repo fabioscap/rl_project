@@ -71,7 +71,8 @@ class ReplayBuffer(object):
         self.capacity = capacity
         self.batch_size = batch_size
         self.device = device
-        self.img_size = img_size
+        self.crop = img_size
+       
 
         # the proprioceptive obs is stored as float32, pixels obs as uint8
         obs_dtype = np.float32 if len(obs_shape) == 1 else np.uint8
@@ -105,9 +106,9 @@ class ReplayBuffer(object):
         next_obses = self.next_obses[idxs]
         pos = obses.copy()
 
-        obses = random_crop(obses, self.img_size)
-        next_obses = random_crop(next_obses, self.img_size)
-        pos = random_crop(pos, self.img_size)
+        obses = random_crop(obses, self.crop)
+        next_obses = random_crop(next_obses, self.crop)
+        pos = random_crop(pos, self.crop)
 
         obses = torch.as_tensor(obses, device=self.device).float()
         actions = torch.as_tensor(self.actions[idxs], device=self.device)
@@ -305,6 +306,7 @@ def random_crop(imgs, output_size):
         imgs, batch images with shape (B,C,H,W)
     """
     # batch size
+
     n = imgs.shape[0]
     img_size = imgs.shape[-1]
     crop_max = img_size - output_size

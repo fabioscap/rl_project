@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import os
 import time
-from dm_control.suite.wrappers import pixels
 from dm_control import suite
 
 import utils
@@ -11,31 +10,69 @@ from video import VideoRecorder
 
 from agent.agent import Agent
 
+import argparse
+from torchvision import transforms
 
-seed = 1
-domain_name = "ball_in_cup"
-task_name = "catch"
-image_size = 16
-frame_stack = 2
-work_dir = '.'
-save_video = True
+def parse_args():
+    parser = argparse.ArgumentParser()
+    # environment
+    parser.add_argument('--domain_name', default='cartpole')
+    parser.add_argument('--task_name', default='balance')
 
-replay_buffer_capacity = 1000
-batch_size = 2
+    
+    parser.add_argument('--frame_stack', default=3, type=int)
+    parser.add_argument('--image_crop_size', default=64, type=int)
+    parser.add_argument('--action_repeat', default=3, type=int)
+    
+    # replay buffer
+    parser.add_argument('--replay_buffer_capacity', default=100000, type=int)
+    parser.add_argument('--image_size', default=100, type=int)
+    # train
+    parser.add_argument('--init_steps', default=1990, type=int)
+    parser.add_argument('--num_train_steps', default=1000000, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--s_dim', default=32, type=int)
 
-s_dim = 16
-a_dim = 2
+    # eval
+    parser.add_argument('--eval_freq', default=1000, type=int)
+    parser.add_argument('--num_eval_episodes', default=3, type=int)
+    # misc
+    parser.add_argument('--seed', default=1834913, type=int)
+    parser.add_argument('--work_dir', default='.', type=str)
+    parser.add_argument('--save_buffer', default=True, action='store_true')
+    parser.add_argument('--save_video', default=True, action='store_true')
+    parser.add_argument('--save_model', default=True, action='store_true')
 
-num_train_steps = 1000000
+    args = parser.parse_args()
+    return args
+
+args = parse_args()
+
+seed = args.seed
+domain_name = args.domain_name
+task_name = args.task_name
+image_size = args.image_size
+image_cropped_size = args.image_crop_size
+frame_stack = args.frame_stack
+work_dir = args.work_dir
+save_video = args.save_video
+
+replay_buffer_capacity = args.replay_buffer_capacity
+batch_size = args.batch_size
+
+s_dim = args.s_dim
+
+num_train_steps = args.num_train_steps
 max_episode_steps = 1000
 
-init_steps = 4
+init_steps = args.init_steps
 
-save_model = True
-save_buffer = True
+save_model = args.save_model
+save_buffer = args.save_buffer
 
-num_eval_episodes = 10
-eval_frequency = 1000
+num_eval_episodes = args.num_eval_episodes
+eval_frequency = args.eval_freq
+action_repeat = args.action_repeat
 
 def evaluate(env, agent, video, num_episodes, L, step):
     for i in range(num_episodes):
@@ -46,8 +83,11 @@ def evaluate(env, agent, video, num_episodes, L, step):
         video.init(enabled=(i == 0))
         done = False
         episode_reward = 0
-        while not done: 
+        for i in range(100): #while not done: 
             with utils.eval_mode(agent):
+
+                obs = utils.center_crop_image(obs, image_cropped_size)
+
                 action = agent.select_action(obs)
                 action = action.astype(np.float32)
 
@@ -78,9 +118,14 @@ def main():
                                              "height": image_size,
                                              "width":  image_size})
 
+
+
     action_spec = env.action_spec()
+
     action_shape = env.action_spec().shape
+   
     observation_shape = env.observation_spec()['pixels'].shape
+    observation_cropped_shape = (3*args.frame_stack, image_cropped_size, image_cropped_size)
 
     utils.make_dir(work_dir)
     video_dir = utils.make_dir(os.path.join(work_dir, 'video'))
@@ -96,14 +141,14 @@ def main():
         action_shape=action_shape,
         capacity=replay_buffer_capacity,
         batch_size=batch_size,
-        device=device
+        device=device,
+        img_size= image_cropped_size
     )
-
+    
     agent = Agent(
-        obs_shape=observation_shape,
+        obs_shape=observation_cropped_shape,
         a_shape=action_shape,
         s_dim = s_dim,
-        a_dim = a_dim,
         device=device
     )
 
@@ -148,18 +193,21 @@ def main():
                                size=action_spec.shape)
         else:
             with utils.eval_mode(agent): 
+
+                obs = utils.center_crop_image(obs, image_cropped_size)
                 action = agent.sample_action(obs)
 
         # run training update
         if step >= init_steps:
             num_updates = init_steps if step == init_steps else 1
             for _ in range(num_updates):
-                agent.update(replay_buffer, step)
-        
+                agent.update(replay_buffer)
+
         time_step = env.step(action)
         
         next_obs = time_step.observation['pixels']
         reward = time_step.reward if not time_step.first() else 0.0
+
         # allow infinit bootstrap
         done = time_step.last()
         done_bool = 0 if episode_step + 1 == max_episode_steps else float(

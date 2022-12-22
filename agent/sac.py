@@ -101,7 +101,7 @@ class SAC(nn.Module):
 
     def policy_forward(self, state):
         state = self.check_tensor(state)
-        
+    
         out = self.policy_network(state)
 
 
