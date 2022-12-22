@@ -3,6 +3,15 @@ import torch
 from utils import make_MLP, copy_params, soft_update_params
 from torch.distributions import Normal
 import numpy as np
+
+
+def squash(pi,log_pi):
+    """Apply squashing function.
+    See appendix C from https://arxiv.org/pdf/1812.05905.pdf.
+    """
+    log_pi -= torch.log(nn.functional.relu(1 - pi.pow(2)) + 1e-6).sum(-1, keepdim=True)
+    return log_pi
+
 # soft actor critic for vector states
 class SAC(nn.Module):
     def __init__(self,
@@ -91,14 +100,15 @@ class SAC(nn.Module):
         return self.log_alpha.exp()
 
     def rep_trick(self, mu, std):
-        normal = Normal(0, 1)
-        z = normal.sample()
-        return torch.tanh(mu + std*z)
+        return torch.tanh(mu + std*torch.randn_like(mu))
 
     def check_tensor(self, x):
         if type(x) != torch.Tensor:
+
             x = np.array(x)
-            x = torch.from_numpy(x)
+            x = torch.from_numpy(x).float()
+            if len(x.shape) == 1:
+                x = x.unsqueeze(0)
         return x
 
 
@@ -144,8 +154,8 @@ class SAC(nn.Module):
     def actor(self, state):
         mu, std = self.policy_forward(state)
         dist = self.rep_trick(mu, std)
-
         return dist
+        
     def gaussian_logprob(self,noise, log_std):
         """Compute Gaussian log probability."""
         residual = (-0.5 * noise.pow(2) - log_std).sum(-1, keepdim=True)
@@ -159,6 +169,8 @@ class SAC(nn.Module):
         
         log_prob = self.gaussian_logprob(z,std.log())
   
+        log_prob = squash(action, log_prob)
+
         return log_prob, action
 
     def get_action(self,state):
@@ -236,15 +248,18 @@ class SAC(nn.Module):
 
     def sample_action(self, obs):
         with torch.no_grad():
+            obs = self.check_tensor(obs)
             obs = obs.to(self.device)
             pi = self.actor(obs)
             return pi.cpu().data.numpy().flatten()
 
     def select_action(self,obs):
         with torch.no_grad():
+            obs = self.check_tensor(obs)
             obs = obs.to(self.device)
             #pi = self.sac.actor(q)
             mu, _ = self.policy_forward(obs)
+            mu = torch.tanh(mu)
             return mu.cpu().data.numpy().flatten()
 
     def update(self, replay_buffer, step: int):
