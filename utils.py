@@ -67,10 +67,11 @@ def preprocess_obs(obs, bits=5):
 
 class ReplayBuffer(object):
     """Buffer to store environment transitions."""
-    def __init__(self, obs_shape, action_shape, capacity, batch_size, device):
+    def __init__(self, obs_shape, action_shape, capacity, batch_size, device, img_size):
         self.capacity = capacity
         self.batch_size = batch_size
         self.device = device
+        self.img_size = img_size
 
         # the proprioceptive obs is stored as float32, pixels obs as uint8
         obs_dtype = np.float32 if len(obs_shape) == 1 else np.uint8
@@ -100,15 +101,23 @@ class ReplayBuffer(object):
             0, self.capacity if self.full else self.idx, size=self.batch_size
         )
 
-        obses = torch.as_tensor(self.obses[idxs], device=self.device).float()
+        obses = self.obses[idxs]
+        next_obses = self.next_obses[idxs]
+        pos = obses.copy()
+
+        obses = random_crop(obses, self.img_size)
+        next_obses = random_crop(next_obses, self.img_size)
+        pos = random_crop(pos, self.img_size)
+
+        obses = torch.as_tensor(obses, device=self.device).float()
         actions = torch.as_tensor(self.actions[idxs], device=self.device)
         rewards = torch.as_tensor(self.rewards[idxs], device=self.device)
-        next_obses = torch.as_tensor(
-            self.next_obses[idxs], device=self.device
-        ).float()
+        next_obses = torch.as_tensor(next_obses, device=self.device).float()
         dones = torch.as_tensor(self.dones[idxs], device=self.device)
+        pos = torch.as_tensor(pos, device = self.device)
 
-        return obses, actions, rewards, next_obses, dones
+        cpc_kwargs = dict(obs_anchor=obses, obs_pos = pos, time_anchor = None, time_pos = None)
+        return obses, actions, rewards, next_obses, dones, cpc_kwargs
 
     def save(self, save_dir):
         if self.idx == self.last_save:
@@ -138,7 +147,9 @@ class ReplayBuffer(object):
             self.rewards[start:end] = payload[3]
             self.dones[start:end] = payload[4]
             self.idx = end
-
+    
+    def __len__(self):
+        return self.capacity
 
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
