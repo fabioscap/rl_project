@@ -181,7 +181,7 @@ def main():
                 lc, la, lcont = agent.update(replay_buffer, step, L)
                 L.log("train/critic_loss", lc, step)
                 L.log("train/actor_loss", la, step)
-                L.log("train/encoder_loss", lcont, step)
+                L.log("train/ae_loss", lcont, step)
 
         next_obs, reward, done, _ = env.step(action)
         done = episode_step + 1 == max_episode_steps

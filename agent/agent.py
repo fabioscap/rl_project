@@ -28,8 +28,8 @@ class Agent():
                             init_temperature = 0.1,
                             learnable_temperature = True,
                             actor_lr = 1e-2,
-                            Q1_lr = 1e-2,
-                            Q2_lr = 1e-2, 
+                            Q1_lr = 1e-4,
+                            Q2_lr = 1e-4, 
                             actor_betas = (0.9, 0.999),
                             critic_betas = (0.9, 0.999),
                             alpha_lr = 1e-4,
@@ -65,9 +65,8 @@ class Agent():
         reward = re + ri
         
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
-        lc1, lc2, la = self.sac.update_SAC(q.detach(), reward, action, qp, done)
-        
         self.encoder_optimizer.zero_grad()
+        lc1, lc2, la = self.sac.update_SAC(q, reward, action, qp, done)
         contrastive_loss.backward()
         self.encoder_optimizer.step()
 

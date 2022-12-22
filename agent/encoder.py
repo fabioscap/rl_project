@@ -166,6 +166,6 @@ class FeatureEncoder(nn.Module):
         fdm_loss = self.compute_contrastive_loss(qp, kp, sim_metric)
 
         ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
-        weight = 0.2
+        weight = 0.8
 
         return q, ri, weight*curl_loss + (1-weight)*fdm_loss
