@@ -42,7 +42,7 @@ class Agent():
         self.encoder_optimizer = torch.optim.Adam(params=self.feature_encoder.parameters(),
                                                   lr=encoder_lr, betas=encoder_betas)
 
-        self.max_extrinsic = 1e-8
+        self.max_extrinsic = 1
 
     def update(self, replay_buffer, step: int, L):
         # do sample
@@ -65,7 +65,7 @@ class Agent():
         reward = re + ri
         
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
-        lc1, lc2, la = self.sac.update_SAC(q, reward, action, qp, done)
+        lc1, lc2, la = self.sac.update_SAC(q.detach(), reward, action, qp, done)
         
         self.encoder_optimizer.zero_grad()
         contrastive_loss.backward()
@@ -74,7 +74,7 @@ class Agent():
         # update the targets
         self.feature_encoder.update_key_network()
 
-        return
+        return lc1+lc2, la, contrastive_loss
 
     def sample_action(self, obs):
         obs = torch.from_numpy(obs).to(self.device) / 255.0

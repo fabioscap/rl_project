@@ -28,7 +28,7 @@ class Encoder(nn.Module):
         layers.append(hidden_act())
 
         for l in range(n_layers -1):
-            layers.append(nn.MaxPool2d(kernel_size=(2,2)))
+            # layers.append(nn.MaxPool2d(kernel_size=(2,2)))
             layers.append(nn.Conv2d(n_kernels,n_kernels,ksize))
             layers.append(hidden_act())
 
@@ -41,10 +41,11 @@ class Encoder(nn.Module):
             self.v_shape = out.flatten().shape[0]
 
         self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act).to(device)
+        self.layer_norm = nn.LayerNorm(self.dim_out)
 
     def forward(self, x): # x has shape (b,c,w,h)
         v = torch.flatten(self.cnn(x), start_dim = 1)
-        return self.mlp(v)
+        return self.layer_norm(self.mlp(v))
 
 # the whole encoder
 class FeatureEncoder(nn.Module):
@@ -149,7 +150,7 @@ class FeatureEncoder(nn.Module):
     def update_key_network(self):
         soft_update_params(self.query_encoder, self.key_encoder, self.tau)
     
-    def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="dot"):
+    def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="bilinear"):
         q = self.encode(s, target=False, grad=True, center_crop=False) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
         k_anch = self.encode(s.clone(), target=True, center_crop=False) # for CURL
@@ -165,7 +166,6 @@ class FeatureEncoder(nn.Module):
         fdm_loss = self.compute_contrastive_loss(qp, kp, sim_metric)
 
         ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
-
         weight = 0.2
 
         return q, ri, weight*curl_loss + (1-weight)*fdm_loss

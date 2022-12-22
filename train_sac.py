@@ -121,26 +121,26 @@ def main():
     )
 
     agent = SAC(s_dim = observation_shape[0], 
-                    a_dim = action_shape, # pass to SAC the actual action, not embedded
-                    Q_hidden_dims=(256,),
-                    policy_hidden_dims=(256,),
-                    gamma = 0.99,
-                    tau = 0.01, 
-                    log_std_bounds=(-10,2),
-                    alpha= 1e-2, 
-                    epsilon = 1e-6,
-                    critic_tau = 0.005,
-                    init_temperature = 0.1,
-                    learnable_temperature = True,
-                    actor_lr = 1e-2,
-                    Q1_lr = 1e-2,
-                    Q2_lr = 1e-2, 
-                    actor_betas = (0.9, 0.999),
-                    critic_betas = (0.9, 0.999),
-                    alpha_lr = 1e-4,
-                    alpha_betas = (0.9, 0.999),
-                    device=device
-                    ).to(device)
+                a_dim = action_shape, # pass to SAC the actual action, not embedded
+                Q_hidden_dims=(256,),
+                policy_hidden_dims=(256,),
+                gamma = 0.99,
+                tau = 0.01, 
+                log_std_bounds=(-10,2),
+                alpha= 1e-2, 
+                epsilon = 1e-6,
+                critic_tau = 0.005,
+                init_temperature = 0.1,
+                learnable_temperature = True,
+                actor_lr = 1e-2,
+                Q1_lr = 1e-2,
+                Q2_lr = 1e-2, 
+                actor_betas = (0.9, 0.999),
+                critic_betas = (0.9, 0.999),
+                alpha_lr = 1e-4,
+                alpha_betas = (0.9, 0.999),
+                device=device
+                ).to(device)
 
     L = Logger(work_dir, use_tb=False)
     
