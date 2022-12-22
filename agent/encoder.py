@@ -157,15 +157,16 @@ class FeatureEncoder(nn.Module):
         
         curl_loss = self.compute_contrastive_loss(q,k_anch,sim_metric)
 
-        ae = self.action_encoder(a)  
-        qp = self.fdm(torch.cat((q,ae),dim=1)) # for FDM loss
+        # ae = self.action_encoder(a)  
+        # qp = self.fdm(torch.cat((q,ae),dim=1)) # for FDM loss
 
-        kp = self.encode(sp, target=True, grad=False, center_crop=False) # encode keys with target
+        # kp = self.encode(sp, target=True, grad=False, center_crop=False) # encode keys with target
                                                       # compute no gradient
 
-        fdm_loss = self.compute_contrastive_loss(qp, kp, sim_metric)
+        # fdm_loss = self.compute_contrastive_loss(qp, kp, sim_metric)
 
-        ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
+        # ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
+        ri = 0.0
         weight = 0.8
 
-        return q, ri, weight*curl_loss + (1-weight)*fdm_loss
+        return q, ri, curl_loss

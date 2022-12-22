@@ -62,7 +62,7 @@ s_dim = args.s_dim
 a_dim = args.a_dim
 
 num_train_steps = args.num_train_steps
-max_episode_steps = 1000
+max_episode_steps = 1000 
 
 init_steps = args.init_steps
 
@@ -184,10 +184,10 @@ def main():
                 L.log("train/ae_loss", lcont, step)
 
         next_obs, reward, done, _ = env.step(action)
-        done = episode_step + 1 == max_episode_steps
+
 
         # allow infinit bootstrap
-        done_bool = 0 if episode_step + 1 == max_episode_steps else float(
+        done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(
             done
         )
         episode_reward += reward
