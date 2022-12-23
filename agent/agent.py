@@ -1,5 +1,5 @@
-from .sac import SAC
-from .encoder import FeatureEncoder
+from sac import SAC
+from encoder import FeatureEncoder
 import torch
 import numpy as np
 class Agent():
@@ -8,7 +8,7 @@ class Agent():
                  a_shape: tuple,
                  s_dim: int, # state representation dimension
                  a_dim: int, # action representation dimension
-                 encoder_lr = 1e-3,
+                 encoder_lr = 1e-6,
                  encoder_betas = (0.9, 0.999),
                  device = "cpu"
                 ):
@@ -33,7 +33,7 @@ class Agent():
                             actor_betas = (0.9, 0.999),
                             critic_betas = (0.9, 0.999),
                             alpha_lr = 1e-4,
-                            alpha_betas = (0.9, 0.999),
+                            alpha_betas = (0.5, 0.999),
                             device=device
                             ).to(device)
         self.device = device
@@ -65,8 +65,9 @@ class Agent():
         reward = re + ri
         
         qp = self.feature_encoder.encode(new_state, target=False, grad=False)
+        lc1, lc2, la = self.sac.update_SAC(q.detach(), reward, action, qp, done)
+        
         self.encoder_optimizer.zero_grad()
-        lc1, lc2, la = self.sac.update_SAC(q, reward, action, qp, done)
         contrastive_loss.backward()
         self.encoder_optimizer.step()
 
