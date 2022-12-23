@@ -1,5 +1,5 @@
-from .sac import SAC
-from .encoder import FeatureEncoder
+from sac import SAC
+from encoder import FeatureEncoder
 import torch
 import numpy as np
 class Agent():
@@ -17,8 +17,8 @@ class Agent():
         self.feature_encoder = FeatureEncoder(self.s_shape, a_shape, s_dim, a_dim, device=device)
         self.sac = SAC(s_dim = s_dim, 
                             a_dim = a_shape, # pass to SAC the actual action, not embedded
-                            Q_hidden_dims=(256,),
-                            policy_hidden_dims=(256,),
+                            Q_hidden_dims=(1024,),
+                            policy_hidden_dims=(1024,),
                             gamma = 0.99,
                             tau = 0.01, 
                             log_std_bounds=(-10,2),
@@ -27,13 +27,13 @@ class Agent():
                             critic_tau = 0.005,
                             init_temperature = 0.1,
                             learnable_temperature = True,
-                            actor_lr = 1e-2,
-                            Q1_lr = 1e-2,
-                            Q2_lr = 1e-2, 
+                            actor_lr = 1e-3,
+                            Q1_lr = 1e-3,
+                            Q2_lr = 1e-3, 
                             actor_betas = (0.9, 0.999),
                             critic_betas = (0.9, 0.999),
                             alpha_lr = 1e-4,
-                            alpha_betas = (0.9, 0.999),
+                            alpha_betas = (0.5, 0.999),
                             device=device
                             ).to(device)
         self.device = device
