@@ -1,4 +1,4 @@
-from sac import SAC
+from .sac import SAC
 from encoder import FeatureEncoder
 import torch
 import numpy as np
