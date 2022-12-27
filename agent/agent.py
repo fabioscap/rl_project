@@ -8,7 +8,7 @@ class Agent():
                  a_shape: tuple,
                  s_dim: int, # state representation dimension
                  a_dim: int, # action representation dimension
-                 encoder_lr = 1e-6,
+                 encoder_lr = 1e-3,
                  encoder_betas = (0.9, 0.999),
                  device = "cpu"
                 ):
