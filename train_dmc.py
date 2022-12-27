@@ -153,7 +153,7 @@ def main():
                 L.log('eval/episode', episode, step)
                 evaluate(env, agent, video, num_eval_episodes, L, step)
                 if save_model:
-                    pass # agent.save(model_dir, step)
+                    agent.save(model_dir, step)
                 if save_buffer:
                     replay_buffer.save(buffer_dir)
 
@@ -168,14 +168,14 @@ def main():
             L.log('train/episode', episode, step)
 
         # sample action for data collection
-        if step < args.init_steps:
+        if step < init_steps:
             action = env.action_space.sample()
         else:
             with utils.eval_mode(agent):
                 action = agent.sample_action(obs)
 
         # run training update
-        if step >= args.init_steps:
+        if step >= init_steps:
             num_updates = 1 
             for _ in range(num_updates):
                 lc, la, lcont = agent.update(replay_buffer, step, L)
@@ -184,9 +184,10 @@ def main():
                 L.log("train/ae_loss", lcont, step)
 
         next_obs, reward, done, _ = env.step(action)
+        done = episode_step + 1 == max_episode_steps
 
         # allow infinit bootstrap
-        done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(
+        done_bool = 0 if episode_step + 1 == max_episode_steps else float(
             done
         )
         episode_reward += reward
