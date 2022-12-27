@@ -1,5 +1,5 @@
-from sac import SAC
-from encoder import FeatureEncoder
+from .sac import SAC
+from .encoder import FeatureEncoder
 import torch
 import numpy as np
 class Agent():
