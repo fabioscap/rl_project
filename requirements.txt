@@ -1,7 +1,7 @@
 dm-control
 dmc2gym @ git+https://github.com/denisyarats/dmc2gym.git@06f7e335d988b17145947be9f6a76f557d0efe81
 grpcio
-gym==0.24.1
+gym==0.21.0
 imageio
 matplotlib
 matplotlib-inline
@@ -16,6 +16,6 @@ Pygments
 PyOpenGL
 torch
 torchvision
-sckit-image
+scikit-image
 tensorboard
 termcolor
