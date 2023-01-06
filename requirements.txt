@@ -16,6 +16,6 @@ Pygments
 PyOpenGL
 torch
 torchvision
-sckit-image
+scikit-image
 tensorboard
 termcolor
