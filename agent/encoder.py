@@ -90,7 +90,7 @@ class FeatureEncoder(nn.Module):
             "dot": lambda x,y: torch.einsum("ij, kj -> ik", x,y), 
 
             # do the bilinear product on every pair: (k' W  k)
-            "bilinear": lambda x,y: torch.einsum("ij, kj, jj -> ik", x,y,self.W),
+            "bilinear": lambda x,y: torch.matmul(x, torch.matmul(self.W, y.T)),
 
             # temperature ...
         }
