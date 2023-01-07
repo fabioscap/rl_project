@@ -132,7 +132,7 @@ def main():
     )
 
     agent = Agent(
-        obs_cropped_shape=observation_cropped_shape,
+        obs_shape=observation_cropped_shape,
         a_shape=action_shape,
         s_dim = s_dim,
         a_dim = a_dim,
