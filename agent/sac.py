@@ -186,9 +186,9 @@ class SAC(nn.Module):
         self.alpha*=0.8
 
     def update_policy(self, state, Q_net1, Q_net2):
-
-        log_prob, _ = self.return_log(state)
-        actor_Q = torch.min(Q_net1, Q_net2)
+        with torch.no_grad():
+            log_prob, _ = self.return_log(state)
+            actor_Q = torch.min(Q_net1, Q_net2)
 
         # minus because we perform a gradient descent
         actor_loss = -(actor_Q - self.alpha*log_prob).mean()
@@ -241,7 +241,7 @@ class SAC(nn.Module):
         
 
         Q1, Q2 = self.Qnet_forward(state.detach(), dist)
-        la = self.update_policy(state.detach(), Q1, Q2)
+        la = self.update_policy(state, Q1, Q2)
 
         soft_update_params(self.Q_network1, self.Q_target1,self.critic_tau)
         soft_update_params(self.Q_network2, self.Q_target2,self.critic_tau)       

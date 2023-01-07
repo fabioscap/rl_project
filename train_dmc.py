@@ -28,10 +28,10 @@ def parse_args():
     # train
     parser.add_argument('--init_steps', default=1000, type=int)
     parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--s_dim', default=50, type=int)
     parser.add_argument('--a_dim', default=5, type=int)
-    parser.add_argument('--num_updates', default=2, type=int)
+    parser.add_argument('--num_updates', default=1, type=int)
     # eval
     parser.add_argument('--eval_freq', default=1000, type=int)
     parser.add_argument('--num_eval_episodes', default=1, type=int)
