@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-from utils import make_MLP, copy_params, soft_update_params
+from utils import make_MLP, copy_params, soft_update_params, weight_init
 from torch.distributions import Normal
 import numpy as np
 
@@ -86,6 +86,8 @@ class SAC(nn.Module):
         self.learnable_temperature = learnable_temperature
         
         self.log_alpha = torch.tensor(np.log(init_temperature))
+        
+        self.apply(weight_init)
         if self.learnable_temperature:
           self.log_alpha.requires_grad = True
         else: 

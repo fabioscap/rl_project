@@ -15,8 +15,8 @@ import argparse
 def parse_args():
     parser = argparse.ArgumentParser()
     # environment
-    parser.add_argument('--domain_name', default='cartpole')
-    parser.add_argument('--task_name', default='swingup')
+    parser.add_argument('--domain_name', default='reacher')
+    parser.add_argument('--task_name', default='hard')
 
     parser.add_argument('--frame_stack', default=3, type=int)
     parser.add_argument('--frame_skip', default=3, type=int)
@@ -26,11 +26,11 @@ def parse_args():
     # train
     parser.add_argument('--init_steps', default=1000, type=int)
     parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)
 
     # eval
     parser.add_argument('--eval_freq', default=1000, type=int)
-    parser.add_argument('--num_eval_episodes', default=3, type=int)
+    parser.add_argument('--num_eval_episodes', default=1, type=int)
     # misc
     parser.add_argument('--seed', default=1834913, type=int)
     parser.add_argument('--work_dir', default='.', type=str)
@@ -122,8 +122,8 @@ def main():
 
     agent = SAC(s_dim = observation_shape[0], 
                 a_dim = action_shape, # pass to SAC the actual action, not embedded
-                Q_hidden_dims=(256,),
-                policy_hidden_dims=(256,),
+                Q_hidden_dims=(512,),
+                policy_hidden_dims=(512,),
                 gamma = 0.99,
                 tau = 0.01, 
                 log_std_bounds=(-10,2),
@@ -132,9 +132,9 @@ def main():
                 critic_tau = 0.005,
                 init_temperature = 0.1,
                 learnable_temperature = True,
-                actor_lr = 1e-2,
-                Q1_lr = 1e-2,
-                Q2_lr = 1e-2, 
+                actor_lr = 1e-3,
+                Q1_lr = 1e-3,
+                Q2_lr = 1e-3, 
                 actor_betas = (0.9, 0.999),
                 critic_betas = (0.9, 0.999),
                 alpha_lr = 1e-4,
