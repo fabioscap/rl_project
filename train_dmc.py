@@ -28,7 +28,7 @@ def parse_args():
     # train
     parser.add_argument('--init_steps', default=1000, type=int)
     parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=128, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--s_dim', default=50, type=int)
     parser.add_argument('--a_dim', default=5, type=int)
     parser.add_argument('--num_updates', default=2, type=int)
@@ -180,7 +180,7 @@ def main():
         if step >= init_steps:
             num_updates = 1 
             for _ in range(num_updates):
-                lc, la, lcont = agent.update(replay_buffer, step, L)
+                lc, la, lcont = agent.update(replay_buffer, step)
                 L.log("train/critic_loss", lc, step)
                 L.log("train/actor_loss", la, step)
                 L.log("train/ae_loss", lcont, step)
