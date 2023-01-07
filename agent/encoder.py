@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from math import exp
-from utils import make_MLP, infoNCE, soft_update_params, copy_params, random_crop, center_crop_images
+from utils import make_MLP, infoNCE, soft_update_params, copy_params, random_crop, center_crop_images, weight_init
 from torchvision import transforms
 # neural network for query and key encoder
 class Encoder(nn.Module):
@@ -42,7 +42,7 @@ class Encoder(nn.Module):
 
         self.mlp = make_MLP(self.v_shape, self.dim_out, mlp_hidden_dims, out_act).to(device)
         self.layer_norm = nn.LayerNorm(self.dim_out).to(device)
-
+        self.apply(weight_init)
     def forward(self, x): # x has shape (b,c,w,h)
         v = torch.flatten(self.cnn(x), start_dim = 1)
         return self.layer_norm(self.mlp(v))
@@ -95,7 +95,7 @@ class FeatureEncoder(nn.Module):
             # temperature ...
         }
         self.max_intrinsic = 1e-8 # the maximum intrinsic reward (for normalization)
-
+        self.apply(weight_init)
     def encode(self, s: torch.Tensor, 
                      target=False, # whether to use key network
                      grad=True,    # enable/disable gradient flow
@@ -115,7 +115,7 @@ class FeatureEncoder(nn.Module):
                 with torch.no_grad():
                     return self.query_encoder(cropped)
 
-    def compute_contrastive_loss(self, qp, kp, sim_metric="dot"):
+    def compute_contrastive_loss(self, qp, kp, sim_metric="bilinear"):
         # what is proposed in the paper is contrastive loss
         # between new states and predicted new state
 
@@ -153,20 +153,20 @@ class FeatureEncoder(nn.Module):
     def encode_reward_loss(self, s, a, sp, step, max_reward, sim_metric="bilinear"):
         q = self.encode(s, target=False, grad=True, center_crop=False) # encode state with key encoder with grad
                                       # in order to update the network through SAC loss
-        k_anch = self.encode(s.clone(), target=True, center_crop=False) # for CURL
+        k_anch = self.encode(s.clone(), target=True, grad = False, center_crop=False) # for CURL
         
-        curl_loss = self.compute_contrastive_loss(q,k_anch,sim_metric)
+        curl_loss = self.compute_contrastive_loss(q,k_anch.detach(),sim_metric)
 
-        #ae = self.action_encoder(a)  
-        #qp = self.fdm(torch.cat((q,ae),dim=1)) # for FDM loss
+        ae = self.action_encoder(a)  
+        qp = self.fdm(torch.cat((q,ae),dim=1)) # for FDM loss
 
-        #kp = self.encode(sp, target=True, grad=False, center_crop=False) # encode keys with target
+        kp = self.encode(sp, target=True, grad=False, center_crop=False) # encode keys with target
                                                       # compute no gradient
 
-        #fdm_loss = self.compute_contrastive_loss(qp, kp, sim_metric)
+        fdm_loss = self.compute_contrastive_loss(qp, kp.detach(), sim_metric)
 
-        #ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
-        ri = 0
+        ri = self.compute_intrinsic_reward(qp.detach(), kp.detach(), step, max_reward)
+        
         weight = 0.2
 
-        return q, ri, curl_loss #+ (1-weight)*fdm_loss
+        return q, ri, weight*curl_loss + (1-weight)*fdm_loss
