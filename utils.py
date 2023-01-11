@@ -139,37 +139,6 @@ class ReplayBuffer(object):
             self.dones[start:end] = payload[4]
             self.idx = end
 
-
-class FrameStack(gym.Wrapper):
-    def __init__(self, env, k):
-        gym.Wrapper.__init__(self, env)
-        self._k = k
-        self._frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
-        self.observation_space = gym.spaces.Box(
-            low=0,
-            high=1,
-            shape=((shp[0] * k,) + shp[1:]),
-            dtype=env.observation_space.dtype
-        )
-        self._max_episode_steps = env._max_episode_steps
-
-    def reset(self):
-        obs = self.env.reset()
-        for _ in range(self._k):
-            self._frames.append(obs)
-        return self._get_obs()
-
-    def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        self._frames.append(obs)
-        return self._get_obs(), reward, done, info
-
-    def _get_obs(self):
-        assert len(self._frames) == self._k
-        return np.concatenate(list(self._frames), axis=0)
-
-
 from dm_control.suite.wrappers import pixels
 from dm_env import specs
 from collections import OrderedDict
@@ -227,8 +196,8 @@ class FrameStackDMC(pixels.Wrapper):
 def make_MLP(in_dim: int, 
              out_dim: int, 
              hidden_dims: tuple, 
-             hidden_act = nn.Tanh, 
-             out_act = nn.Tanh) -> nn.Module:
+             hidden_act = nn.ReLU, 
+             out_act = None) -> nn.Module:
     layers = []
     if len(hidden_dims) == 0:
         layers.append(nn.Linear(in_dim,out_dim))
@@ -286,7 +255,7 @@ class NormalizedActions(gym.ActionWrapper):
 def copy_params(copy_from: nn.Module, copy_to: nn.Module):
     copy_to.load_state_dict(copy_from.state_dict())
 
-def random_crop(imgs, output_size):
+def random_crop(imgs_torch: torch.Tensor, output_size):
     """
     Vectorized way to do random crop using sliding windows
     and picking out random ones
@@ -294,6 +263,7 @@ def random_crop(imgs, output_size):
         imgs, batch images with shape (B,C,H,W)
     """
     # batch size
+    imgs = imgs_torch.cpu().numpy()
     n = imgs.shape[0]
     img_size = imgs.shape[-1]
     crop_max = img_size - output_size
@@ -305,11 +275,11 @@ def random_crop(imgs, output_size):
         imgs, (1, output_size, output_size, 1))[..., 0,:,:, 0]
     # selects a random window for each batch element
     cropped_imgs = windows[np.arange(n), w1, h1]
-    return cropped_imgs
+    return torch.from_numpy(cropped_imgs)
 
 def center_crop_image(image, output_size):
     h, w = image.shape[1:]
-    new_h, new_w = output_size, output_size
+    new_h, new_w = output_size[1:]
 
     top = (h - new_h)//2
     left = (w - new_w)//2

@@ -3,6 +3,15 @@ import torch
 from utils import make_MLP, copy_params, soft_update_params
 from torch.distributions import Normal
 import numpy as np
+
+
+def squash(pi,log_pi):
+    """Apply squashing function.
+    See appendix C from https://arxiv.org/pdf/1812.05905.pdf.
+    """
+    log_pi -= torch.log(nn.functional.relu(1 - pi.pow(2)) + 1e-6).sum(-1, keepdim=True)
+    return log_pi
+
 # soft actor critic for vector states
 class SAC(nn.Module):
     def __init__(self,
@@ -25,9 +34,12 @@ class SAC(nn.Module):
                 learnable_temperature: bool,
                 alpha_betas: tuple,
                 critic_tau: int,
+                device
 
                 ):
         super().__init__()
+
+        self.device = device
 
         self.num_actions = a_dim[0]
         
@@ -45,7 +57,7 @@ class SAC(nn.Module):
         copy_params(self.Q_network1, self.Q_target1)
         copy_params(self.Q_network2, self.Q_target2)
 
-        self.policy_network = make_MLP(s_dim, 2* self.num_actions, policy_hidden_dims) 
+        self.policy_network = make_MLP(s_dim, 2* self.num_actions, policy_hidden_dims)
                                               # half for the mean
                                               # and half for the (log) std
 
@@ -88,14 +100,15 @@ class SAC(nn.Module):
         return self.log_alpha.exp()
 
     def rep_trick(self, mu, std):
-        normal = Normal(0, 1)
-        z = normal.sample()
-        return torch.tanh(mu + std*z)
+        return torch.tanh(mu + std*torch.randn_like(mu))
 
     def check_tensor(self, x):
         if type(x) != torch.Tensor:
+
             x = np.array(x)
-            x = torch.from_numpy(x)
+            x = torch.from_numpy(x).float()
+            if len(x.shape) == 1:
+                x = x.unsqueeze(0)
         return x
 
 
@@ -141,8 +154,8 @@ class SAC(nn.Module):
     def actor(self, state):
         mu, std = self.policy_forward(state)
         dist = self.rep_trick(mu, std)
-
         return dist
+        
     def gaussian_logprob(self,noise, log_std):
         """Compute Gaussian log probability."""
         residual = (-0.5 * noise.pow(2) - log_std).sum(-1, keepdim=True)
@@ -156,6 +169,8 @@ class SAC(nn.Module):
         
         log_prob = self.gaussian_logprob(z,std.log())
   
+        log_prob = squash(action, log_prob)
+
         return log_prob, action
 
     def get_action(self,state):
@@ -192,9 +207,10 @@ class SAC(nn.Module):
 
     def update_Qnetworks(self, reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob):
         
-        Q_critic = torch.min(Q_targ1, Q_targ2)
-       
-        target = reward + self.gamma*(1-done)*(Q_critic - self.alpha*log_prob)
+        with torch.no_grad():
+            Q_critic = torch.min(Q_targ1, Q_targ2)
+        
+            target = reward + self.gamma*(1-done)*(Q_critic - self.alpha*log_prob)
 
 
         critic1_loss = self.critic1_loss(Q_net1, target.detach())
@@ -215,17 +231,47 @@ class SAC(nn.Module):
         
         Q_targ1, Q_targ2 = self.Qtarg_forward(new_state, new_action)
         
-        loss1, loss2 = self.update_Qnetworks(reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob)
+        lc1, lc2 = self.update_Qnetworks(reward, done, Q_targ1, Q_targ2, Q_net1, Q_net2, log_prob)
 
         dist = self.actor(state)
         if len(dist) == 1:
             dist.unsqueeze(-1)
         
 
-        Q1, Q2 = self.Qnet_forward(state, dist)
-        loss3 = self.update_policy(state, Q1, Q2)
+        Q1, Q2 = self.Qnet_forward(state.detach(), dist)
+        la = self.update_policy(state.detach(), Q1, Q2)
 
         soft_update_params(self.Q_network1, self.Q_target1,self.critic_tau)
         soft_update_params(self.Q_network2, self.Q_target2,self.critic_tau)       
 
-        return loss1.item() + loss2.item() + loss3.item()   
+        return lc1.item(), lc2.item(), la.item()  
+
+    def sample_action(self, obs):
+        with torch.no_grad():
+            obs = self.check_tensor(obs)
+            obs = obs.to(self.device)
+            pi = self.actor(obs)
+            return pi.cpu().data.numpy().flatten()
+
+    def select_action(self,obs):
+        with torch.no_grad():
+            obs = self.check_tensor(obs)
+            obs = obs.to(self.device)
+            #pi = self.sac.actor(q)
+            mu, _ = self.policy_forward(obs)
+            mu = torch.tanh(mu)
+            return mu.cpu().data.numpy().flatten()
+
+    def update(self, replay_buffer, step: int):
+        # do sample
+        state, action, re, new_state, dones, *_ = replay_buffer.sample()
+        
+        state = state.to(self.device)
+        action = action.to(self.device)
+        re = re.to(self.device)
+        new_state = new_state.to(self.device)
+        done = dones.to(self.device)
+
+        lc1, lc2, la = self.update_SAC(state, re, action, new_state, done)
+        
+        return lc1, lc2, la 

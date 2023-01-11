@@ -5,7 +5,92 @@ import gym
 import os
 from collections import deque
 import random
+from skimage.util.shape import view_as_windows
 
+def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity, device):
+    # the positive key is at the same index as the query
+    # the other indexes are the negative keys
+    
+    # q: (b,n)
+    # k: (b,n)
+
+    # compute the similarities
+    sims:torch.Tensor = similarity(queries,keys) # (b,b)
+    # the diagonal elements can be interpreted as positive keys
+    # the off diagonal as negative keys
+
+    # subtract the max for stability
+    sims = sims - torch.max(sims, 1)[0][:, None]
+
+    # compute the fake labels
+    labels = torch.arange(sims.shape[0], dtype=torch.long).to(device)
+
+    return nn.functional.cross_entropy(sims,labels)
+
+def random_crop(imgs_torch: torch.Tensor, output_size):
+    """
+    Vectorized way to do random crop using sliding windows
+    and picking out random ones
+    args:
+        imgs, batch images with shape (B,C,H,W)
+    """
+    # batch size
+    imgs = imgs_torch.cpu().numpy()
+    n = imgs.shape[0]
+    img_size = imgs.shape[-1]
+    crop_max = img_size - output_size
+    imgs = np.transpose(imgs, (0, 2, 3, 1))
+    w1 = np.random.randint(0, crop_max, n)
+    h1 = np.random.randint(0, crop_max, n)
+    # creates all sliding windows combinations of size (output_size)
+    windows = view_as_windows(
+        imgs, (1, output_size, output_size, 1))[..., 0,:,:, 0]
+    # selects a random window for each batch element
+    cropped_imgs = windows[np.arange(n), w1, h1]
+    return torch.from_numpy(cropped_imgs)
+
+def center_crop_image(image, output_size):
+    h, w = image.shape[1:]
+    new_h, new_w = output_size[1:]
+
+    top = (h - new_h)//2
+    left = (w - new_w)//2
+
+    image = image[:, top:top + new_h, left:left + new_w]
+    return image
+
+
+def center_crop_images(image, output_size):
+    h, w = image.shape[2:]
+    new_h, new_w = output_size, output_size
+
+    top = (h - new_h)//2
+    left = (w - new_w)//2
+
+    image = image[:, :, top:top + new_h, left:left + new_w]
+    return image 
+        
+def make_MLP(in_dim: int, 
+             out_dim: int, 
+             hidden_dims: tuple, 
+             hidden_act = nn.ReLU, 
+             out_act = None) -> nn.Module:
+    layers = []
+    if len(hidden_dims) == 0:
+        layers.append(nn.Linear(in_dim,out_dim))
+        if out_act != None:
+            layers.append(out_act())
+        return nn.Sequential(*layers)
+    else:
+        d_in = in_dim
+        for d_out in hidden_dims:
+            layers.append(nn.Linear(d_in,d_out))
+            layers.append(hidden_act())
+            d_in = d_out
+        layers.append(nn.Linear(d_out,out_dim))
+        if out_act != None:     
+            layers.append(out_act())
+        return nn.Sequential(*layers)
 
 class eval_mode(object):
     def __init__(self, *models):
@@ -79,7 +164,7 @@ class ReplayBuffer(object):
         self.next_obses = np.empty((capacity, *obs_shape), dtype=obs_dtype)
         self.actions = np.empty((capacity, *action_shape), dtype=np.float32)
         self.rewards = np.empty((capacity, 1), dtype=np.float32)
-        self.dones = np.empty((capacity, 1), dtype=np.float32)
+        self.not_dones = np.empty((capacity, 1), dtype=np.float32)
 
         self.idx = 0
         self.last_save = 0
@@ -90,11 +175,11 @@ class ReplayBuffer(object):
         np.copyto(self.actions[self.idx], action)
         np.copyto(self.rewards[self.idx], reward)
         np.copyto(self.next_obses[self.idx], next_obs)
-        np.copyto(self.dones[self.idx], done)
+        np.copyto(self.not_dones[self.idx], not done)
 
         self.idx = (self.idx + 1) % self.capacity
         self.full = self.full or self.idx == 0
-
+        
     def sample(self):
         idxs = np.random.randint(
             0, self.capacity if self.full else self.idx, size=self.batch_size
@@ -106,9 +191,9 @@ class ReplayBuffer(object):
         next_obses = torch.as_tensor(
             self.next_obses[idxs], device=self.device
         ).float()
-        dones = torch.as_tensor(self.dones[idxs], device=self.device)
+        not_dones = torch.as_tensor(self.not_dones[idxs], device=self.device)
 
-        return obses, actions, rewards, next_obses, dones
+        return obses, actions, rewards, next_obses, not_dones
 
     def save(self, save_dir):
         if self.idx == self.last_save:
@@ -119,7 +204,7 @@ class ReplayBuffer(object):
             self.next_obses[self.last_save:self.idx],
             self.actions[self.last_save:self.idx],
             self.rewards[self.last_save:self.idx],
-            self.dones[self.last_save:self.idx]
+            self.not_dones[self.last_save:self.idx]
         ]
         self.last_save = self.idx
         torch.save(payload, path)
@@ -136,7 +221,7 @@ class ReplayBuffer(object):
             self.next_obses[start:end] = payload[1]
             self.actions[start:end] = payload[2]
             self.rewards[start:end] = payload[3]
-            self.dones[start:end] = payload[4]
+            self.not_dones[start:end] = payload[4]
             self.idx = end
 
 
@@ -145,97 +230,26 @@ class FrameStack(gym.Wrapper):
         gym.Wrapper.__init__(self, env)
         self._k = k
         self._frames = deque([], maxlen=k)
-        s = env.reset()
-        shp = s.observation['pixels'].shape
+        shp = env.observation_space.shape
         self.observation_space = gym.spaces.Box(
             low=0,
             high=1,
-            shape=(shp),
-            dtype=s.observation['pixels'].dtype
+            shape=((shp[0] * k,) + shp[1:]),
+            dtype=env.observation_space.dtype
         )
-        self._max_episode_steps = 1000
+        self._max_episode_steps = env._max_episode_steps
 
     def reset(self):
         obs = self.env.reset()
         for _ in range(self._k):
-            self._frames.append(obs.observation['pixels'])
+            self._frames.append(obs)
         return self._get_obs()
 
     def step(self, action):
-        obs = self.env.step(action)
-        
-        s = obs.observation['pixels'] 
-      
-        self._frames.append(s)
-  
-        reward = obs.reward   
-        done = obs.last()
-        
-        return self._get_obs(), reward, done, done
+        obs, reward, done, info = self.env.step(action)
+        self._frames.append(obs)
+        return self._get_obs(), reward, done, info
 
     def _get_obs(self):
         assert len(self._frames) == self._k
-
         return np.concatenate(list(self._frames), axis=0)
-
-def make_MLP(in_dim: int, 
-             out_dim: int, 
-             hidden_dims: tuple, 
-             hidden_act = nn.Tanh, 
-             out_act = nn.Tanh) -> nn.Module:
-    layers = []
-    if len(hidden_dims) == 0:
-        layers.append(nn.Linear(in_dim,out_dim))
-        if out_act != None:
-            layers.append(out_act())
-        return nn.Sequential(*layers)
-    else:
-        d_in = in_dim
-        for d_out in hidden_dims:
-            layers.append(nn.Linear(d_in,d_out))
-            layers.append(hidden_act())
-            d_in = d_out
-        layers.append(nn.Linear(d_out,out_dim))
-        if out_act != None:     
-            layers.append(out_act())
-        return nn.Sequential(*layers)
-
-# implement the contrastive loss used in CURL, CCFDM
-def infoNCE(queries: torch.Tensor, keys: torch.Tensor, similarity):
-    # the positive key is at the same index as the query
-    # the other indexes are the negative keys
-    
-    # q: (b,n)
-    # k: (b,n)
-    device ='cuda' if torch.cuda.is_available() else 'cpu'
-    # compute the similarities
-    sims = similarity(queries,keys) # (b,b)
-    # the diagonal elements can be interpreted as positive keys
-    # the off diagonal as negative keys
-
-    # compute the fake labels
-    labels = torch.arange(sims.shape[0], dtype=torch.long).to(device)
-
-    return nn.functional.cross_entropy(sims,labels)
-
-class NormalizedActions(gym.ActionWrapper):
-    def action(self, action):
-        low  = self.action_space.low
-        high = self.action_space.high
-        
-        action = low + (action + 1.0) * 0.5 * (high - low)
-        action = np.clip(action, low, high)
-        
-        return action
-
-    def reverse_action(self, action):
-        low  = self.action_space.low
-        high = self.action_space.high
-        
-        action = 2 * (action - low) / (high - low) - 1
-        action = np.clip(action, low, high)
-        
-        return action
-
-def copy_params(copy_from: nn.Module, copy_to: nn.Module):
-    copy_to.load_state_dict(copy_from.state_dict())

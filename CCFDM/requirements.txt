@@ -13,6 +13,7 @@ decorator==5.1.1
 dm-control==1.0.9
 dm-env==1.5
 dm-tree==0.1.7
+dmc2gym @ git+https://github.com/denisyarats/dmc2gym.git@06f7e335d988b17145947be9f6a76f557d0efe81
 entrypoints==0.4
 executing==1.2.0
 fonttools==4.38.0
@@ -20,7 +21,7 @@ glfw==2.5.5
 google-auth==2.15.0
 google-auth-oauthlib==0.4.6
 grpcio==1.51.1
-gym==0.21.0
+gym==0.26.2
 gym-notices==0.0.8
 idna==3.4
 imageio==2.22.4
