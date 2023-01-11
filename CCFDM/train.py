@@ -50,7 +50,7 @@ def parse_args():
     parser.add_argument('--actor_log_std_max', default=2, type=float)
     parser.add_argument('--actor_update_freq', default=2, type=int)
     # encoder/decoder
-    parser.add_argument('--encoder_type', default='pixel', type=str)
+
     parser.add_argument('--encoder_feature_dim', default=50, type=int)
     parser.add_argument('--encoder_lr', default=1e-3, type=float)
     parser.add_argument('--encoder_tau', default=0.05, type=float)
@@ -109,7 +109,7 @@ def evaluate(env, agent, video, num_episodes, L, step):
 
 def make_agent(obs_shape, action_shape, args, device):
     if args.agent == 'sac_ae':
-        return SacAeAgent(
+        return SacAgent(
             obs_shape=obs_shape,
             action_shape=action_shape,
             device=device,
@@ -127,7 +127,6 @@ def make_agent(obs_shape, action_shape, args, device):
             critic_beta=args.critic_beta,
             critic_tau=args.critic_tau,
             critic_target_update_freq=args.critic_target_update_freq,
-            encoder_type=args.encoder_type,
             encoder_feature_dim=args.encoder_feature_dim,
             encoder_lr=args.encoder_lr,
             encoder_tau=args.encoder_tau,
@@ -158,7 +157,7 @@ def main():
         task_name=args.task_name,
         seed=args.seed,
         visualize_reward=False,
-        from_pixels=(args.encoder_type == 'pixel'),
+        from_pixels= True,
         height=args.image_size,
         width=args.image_size,
         frame_skip=args.action_repeat
@@ -166,8 +165,8 @@ def main():
     env.seed(args.seed)
 
     # stack several consecutive frames together
-    if args.encoder_type == 'pixel':
-        env = utils.FrameStack(env, k=args.frame_stack)
+   
+    env = utils.FrameStack(env, k=args.frame_stack)
 
     utils.make_dir(args.work_dir)
     video_dir = utils.make_dir(os.path.join(args.work_dir, 'video'))

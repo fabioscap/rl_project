@@ -89,31 +89,3 @@ class PixelEncoder(nn.Module):
         L.log_param('train_encoder/fc', self.fc, step)
         L.log_param('train_encoder/ln', self.ln, step)
 
-
-class IdentityEncoder(nn.Module):
-    def __init__(self, obs_shape, feature_dim, num_layers, num_filters):
-        super().__init__()
-
-        assert len(obs_shape) == 1
-        self.feature_dim = obs_shape[0]
-
-    def forward(self, obs, detach=False):
-        return obs
-
-    def copy_conv_weights_from(self, source):
-        pass
-
-    def log(self, L, step, log_freq):
-        pass
-
-
-_AVAILABLE_ENCODERS = {'pixel': PixelEncoder, 'identity': IdentityEncoder}
-
-
-def make_encoder(
-    encoder_type, obs_shape, feature_dim, num_layers, num_filters
-):
-    assert encoder_type in _AVAILABLE_ENCODERS
-    return _AVAILABLE_ENCODERS[encoder_type](
-        obs_shape, feature_dim, num_layers, num_filters
-    )

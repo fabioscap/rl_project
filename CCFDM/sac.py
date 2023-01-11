@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import copy
 import math
 import utils
-from encoder import make_encoder
+from encoder import PixelEncoder
 
 
 LOG_FREQ = 10000
@@ -47,13 +47,13 @@ def weight_init(m):
 class Actor(nn.Module):
     """MLP actor network."""
     def __init__(
-        self, obs_shape, action_shape, hidden_dim, encoder_type,
+        self, obs_shape, action_shape, hidden_dim,
         encoder_feature_dim, log_std_min, log_std_max, num_layers, num_filters
     ):
         super().__init__()
 
-        self.encoder = make_encoder(
-            encoder_type, obs_shape, encoder_feature_dim, num_layers,
+        self.encoder = PixelEncoder(
+            obs_shape, encoder_feature_dim, num_layers,
             num_filters
         )
 
@@ -135,14 +135,14 @@ class QFunction(nn.Module):
 class Critic(nn.Module):
     """Critic network, employes two q-functions."""
     def __init__(
-        self, obs_shape, action_shape, hidden_dim, encoder_type,
+        self, obs_shape, action_shape, hidden_dim,
         encoder_feature_dim, num_layers, num_filters
     ):
         super().__init__()
 
 
-        self.encoder = make_encoder(
-            encoder_type, obs_shape, encoder_feature_dim, num_layers,
+        self.encoder = PixelEncoder(
+            obs_shape, encoder_feature_dim, num_layers,
             num_filters
         )
 
@@ -203,7 +203,6 @@ class SacAgent(object):
         critic_beta=0.9,
         critic_tau=0.005,
         critic_target_update_freq=2,
-        encoder_type='pixel',
         encoder_feature_dim=50,
         encoder_lr=1e-3,
         encoder_tau=0.005,
@@ -234,18 +233,18 @@ class SacAgent(object):
         self.obs_shape = obs_shape
 
         self.actor = Actor(
-            obs_shape, action_shape, hidden_dim, encoder_type,
+            obs_shape, action_shape, hidden_dim,
             encoder_feature_dim, actor_log_std_min, actor_log_std_max,
             num_layers, num_filters
         ).to(device)
 
         self.critic = Critic(
-            obs_shape, action_shape, hidden_dim, encoder_type,
+            obs_shape, action_shape, hidden_dim,
             encoder_feature_dim, num_layers, num_filters
         ).to(device)
 
         self.critic_target = Critic(
-            obs_shape, action_shape, hidden_dim, encoder_type,
+            obs_shape, action_shape, hidden_dim,
             encoder_feature_dim, num_layers, num_filters
         ).to(device)
 
