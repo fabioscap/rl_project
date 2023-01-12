@@ -109,7 +109,7 @@ def evaluate(env, agent, video, num_episodes, L, step):
 
 def make_agent(obs_shape, action_shape, args, device):
     if args.agent == 'sac_ae':
-        return SacAeAgent(
+        return SacAgent(
             obs_shape=obs_shape,
             action_shape=action_shape,
             device=device,
